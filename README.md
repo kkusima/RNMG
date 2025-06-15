@@ -34,7 +34,7 @@ RNMG - Reaction Network Matrix Generator
 
 1. Clone this repo:
    ```bash
-   git clone https://github.com/<your-username>/reaction_network_app.git
+   git clone https://github.com/kkusima/RNMG.git
    cd reaction_network_app
    ```
 2. Create and activate a virtual environment (optional but recommended):
