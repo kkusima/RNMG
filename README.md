@@ -53,7 +53,7 @@ RNMG - Reaction Network Matrix Generator
 ## ▶️ Running the App
 
 ```bash
-streamlit run reaction_network_app.py
+streamlit run RNMG_app.py
 ```
 
 This will open a browser window (or show a local URL) where you can:
@@ -71,16 +71,6 @@ This will open a browser window (or show a local URL) where you can:
 - **Coefficients**: prefix species with a number (e.g. `2O*`).
 - **Phase labels** (optional): `(g)`, `(l)`, `(s)` are stripped when computing atomic composition.
 - To clear all reactions, click **Clear All** in the sidebar.
-
----
-
-## 🤝 Contributing
-
-1. Fork the repo.
-2. Create a feature branch: `git checkout -b feature/YourFeature`
-3. Commit your changes: `git commit -m "Add YourFeature"`
-4. Push to your branch: `git push origin feature/YourFeature`
-5. Open a pull request.
 
 ---
 
