@@ -1,7 +1,7 @@
 # RNMG
 RNMG - Reaction Network Matrix Generator
 
-### Access the webapp through : https://rnmgapp.streamlit.app/
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rnmgapp.streamlit.app)
 
 **A Streamlit app to parse chemical reaction mechanisms and automatically generate:
 
