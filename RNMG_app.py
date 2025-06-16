@@ -331,7 +331,7 @@ with st.sidebar:
     reaction_input = st.text_area(
         "Enter reaction (e.g., CO(g) + * ⇌ CO*):",
         placeholder="CO(g) + * ⇌ CO*",
-        help="Use ⇌, ↔, <->, or -> for arrows. Use * for surface sites."
+        help="Use ⇌ for arrows. Use * for surface sites."
     )
     
     if st.button("Add Reaction", type="primary"):
@@ -551,7 +551,7 @@ else:
     ### 💡 Tips:
     - Use `*` to represent surface sites
     - Use `(g)` to specify gas phase (optional)
-    - Supported arrows: `⇌`, `↔`, `<->`, `->`
+    - Supported arrows: `⇌`
     - Add coefficients like `2O*` for multiple species
     - **Automatic Ordering**: Gas species columns appear first, then surface species
     - **Empty Sites Last**: `*` (empty sites) always appear in the last column/row
