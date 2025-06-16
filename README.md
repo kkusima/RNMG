@@ -14,7 +14,7 @@ RNMG - Reaction Network Matrix Generator
 
 ## 🚀 Features
 
-- Input arbitrary reactions using `⇌`, `->`, `<->`, etc.
+- Input arbitrary reactions using `⇌ etc.
 - Supports surface sites (`*`) and gas‑phase species (e.g. `CO(g)`)
 - Auto‑orders columns: **Gas → Surface → Empty Sites (*)**
 - Downloadable CSVs for matrices and parameter tables
