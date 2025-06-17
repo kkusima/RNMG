@@ -68,7 +68,7 @@ This will open a browser window (or show a local URL) where you can:
 
 ## 📝 Usage Tips
 
-- **Arrow notation**: you can use `⇌`, `↔`, `<->`, or `->`.
+- **Arrow notation**: you can use `⇌`.
 - **Surface sites**: denote with `*`.
 - **Coefficients**: prefix species with a number (e.g. `2O*`).
 - **Phase labels** (optional): `(g)`, `(l)`, `(s)` are stripped when computing atomic composition.
