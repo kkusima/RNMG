@@ -1,12 +1,11 @@
-# Aurthor: Kenneth Kusima
+# Author: Kenneth Kusima
 # Version 1.0
 # 06/2025
 # =============================================================================
 # REACTION NETWORK MATRIX GENERATOR
 # =============================================================================
 # This app helps create stoichiometric and atomic matrices from chemical 
-# reaction mechanisms. It's designed for surface chemistry but works for 
-# any type of reactions!
+# reaction mechanisms
 
 # Import all the libraries we need
 import streamlit as st
@@ -16,6 +15,9 @@ import re
 from io import StringIO
 from collections import defaultdict, Counter
 import math
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 
 # =============================================================================
 # PAGE SETUP AND CONFIGURATION
@@ -23,14 +25,14 @@ import math
 
 # Set up the page layout and basic configuration
 st.set_page_config(
-    page_title="Reaction Network Matrix Generator",
+    page_title="RNMG - Reaction Network Matrix Generator",
     page_icon="🔗",
     layout="wide"  # Uses full width of browser
 )
 
 # Main title and description
-st.title("Reaction Network Matrix Generator")
-st.markdown("Create stoichiometric and atomic matrices from chemical reaction mechanisms")
+st.title("RNMG - Reaction Network Matrix Generator")
+st.markdown("Create stoichiometric and atomic matrices from chemical reaction mechanisms with comprehensive thermodynamic analysis")
 
 # =============================================================================
 # SESSION STATE INITIALIZATION
@@ -62,6 +64,8 @@ if 'sigma_values' not in st.session_state:
     st.session_state.sigma_values = []  # Stoichiometric numbers for thermodynamics
 if 'equilibrium_constants' not in st.session_state:
     st.session_state.equilibrium_constants = []  # Calculated equilibrium constants
+if 'equilibrium_results' not in st.session_state:
+    st.session_state.equilibrium_results = {}  # Equilibrium analysis results
 
 # =============================================================================
 # HELPER FUNCTIONS FOR PARSING REACTIONS AND SPECIES
@@ -142,7 +146,7 @@ def get_atomic_composition():
 
 def parse_species_formula(formula):
     """
-    This is our enhanced chemical formula parser! It can handle complex
+    This is our comprehensive chemical formula parser! It can handle complex
     formulas like Ca(OH)2, Al2(SO4)3, and even surface species like CO*.
     Much more powerful than the old hardcoded approach.
     """
@@ -224,7 +228,7 @@ def get_species_atomic_composition(species):
     if clean_species in compositions:
         return compositions[clean_species]
     
-    # Use our enhanced parser for everything else
+    # Use our comprehensive parser for everything else
     return parse_species_formula(clean_species)
 
 # =============================================================================
@@ -441,39 +445,55 @@ def check_mass_balance(atomic_matrix=None, stoich_matrix=None):
 
 def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
     """
-    Calculates individual and overall equilibrium constants from rate constants.
-    The overall equilibrium constant is calculated as K_overall = ∏K_i^σ_i
-    where K_i = k_forward/k_reverse for each reaction.
+    Comprehensive function to calculate equilibrium constants from rate constants with comprehensive error handling.
+    This function calculates individual K_eq values and the overall equilibrium constant using K_overall = ∏K_i^σ_i
+    
+    Args:
+        params_df: DataFrame with parameters including rate constants
+        sigma_values: List of stoichiometric numbers for each reaction
+        k_pattern: How rate constants are organized ("auto" or "alternating")
+    
+    Returns:
+        Tuple of (K_eq_list, K_overall, temperature, gas_constant, k_forward, k_reverse)
     """
     try:
-        # Extract temperature and gas constant from parameters
-        T_row = params_df[params_df['Parameter'] == 'T']
-        R_row = params_df[params_df['Parameter'] == 'R']
+        # Extract temperature and gas constant from parameters with better error handling
+        T_row = params_df[params_df['Parameter'].str.lower() == 't']
+        R_row = params_df[params_df['Parameter'].str.lower() == 'r']
         
-        # Use defaults if not found
+        # Use defaults if not found, with user warnings
         if T_row.empty:
-            st.warning("Temperature (T) not found, using default 320 K")
+            st.warning("Temperature (T) not found in parameters, using default 320 K")
             T = 320.0
         else:
-            T = T_row['Values'].iloc[0]
+            T = float(T_row['Values'].iloc[0])
             
         if R_row.empty:
-            st.warning("Gas constant (R) not found, using default 8.314 J/(mol·K)")
+            st.warning("Gas constant (R) not found in parameters, using default 8.314 J/(mol·K)")
             R = 8.314
         else:
-            R = R_row['Values'].iloc[0]
+            R = float(R_row['Values'].iloc[0])
         
-        # Find all rate constants - we need to be flexible with naming conventions
+        # Find all rate constants with improved pattern matching
         k_forward = []
         k_reverse = []
         
         # Get all parameters that look like rate constants
-        k_params = params_df[params_df['Parameter'].str.contains(r'^k\d+', regex=True, na=False)]
+        k_params = params_df[params_df['Parameter'].str.contains(r'k', regex=True, na=False, case=False)]
         k_params = k_params.sort_values('Parameter')
         
         if k_pattern == "alternating":
-            # User told us every other k is reverse (k1=forward, k2=reverse, etc.)
-            k_values = k_params['Values'].tolist()
+            # Every other k is reverse (k1=forward, k2=reverse, etc.)
+            k_values = []
+            for _, row in k_params.iterrows():
+                param_name = str(row['Parameter'])
+                if 'k' in param_name.lower():
+                    try:
+                        k_values.append(float(row['Values']))
+                    except (ValueError, TypeError):
+                        st.warning(f"Could not parse rate constant {param_name}, using default 1.0")
+                        k_values.append(1.0)
+            
             for i in range(0, len(k_values), 2):
                 if i < len(k_values):
                     k_forward.append(k_values[i])
@@ -486,8 +506,8 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
             # Try to automatically detect the naming pattern
             for i in range(len(sigma_values)):
                 # Try different possible naming conventions
-                possible_forward = [f'k{i+1}f', f'k{i+1}F', f'k_{i+1}_f', f'k{i+1}', f'k{2*i+1}']
-                possible_reverse = [f'k{i+1}r', f'k{i+1}R', f'k_{i+1}_r', f'k{i+1}_rev', f'k{2*i+2}']
+                possible_forward = [f'k{i+1}f', f'k{i+1}F', f'k{i+1}_f', f'k{i+1}', f'k{2*i+1}']
+                possible_reverse = [f'k{i+1}r', f'k{i+1}R', f'k{i+1}_r', f'k{i+1}_rev', f'k{2*i+2}']
                 
                 kf_found = False
                 kr_found = False
@@ -496,25 +516,31 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                 for kf_name in possible_forward:
                     kf_row = params_df[params_df['Parameter'] == kf_name]
                     if not kf_row.empty:
-                        k_forward.append(kf_row['Values'].iloc[0])
-                        kf_found = True
-                        break
+                        try:
+                            k_forward.append(float(kf_row['Values'].iloc[0]))
+                            kf_found = True
+                            break
+                        except (ValueError, TypeError):
+                            continue
                 
                 # Look for reverse rate constant
                 for kr_name in possible_reverse:
                     kr_row = params_df[params_df['Parameter'] == kr_name]
                     if not kr_row.empty:
-                        k_reverse.append(kr_row['Values'].iloc[0])
-                        kr_found = True
-                        break
+                        try:
+                            k_reverse.append(float(kr_row['Values'].iloc[0]))
+                            kr_found = True
+                            break
+                        except (ValueError, TypeError):
+                            continue
                 
                 # Use defaults if we couldn't find them
                 if not kf_found:
-                    st.warning(f"Forward rate constant for reaction {i+1} not found, using 1.0")
+                    st.warning(f"Forward rate constant for reaction {i+1} not found, using default 1.0")
                     k_forward.append(1.0)
                     
                 if not kr_found:
-                    st.warning(f"Reverse rate constant for reaction {i+1} not found, using 1.0")
+                    st.warning(f"Reverse rate constant for reaction {i+1} not found, using default 1.0")
                     k_reverse.append(1.0)
         
         # Make sure we have the right number of rate constants
@@ -523,30 +549,117 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
         while len(k_reverse) < len(sigma_values):
             k_reverse.append(1.0)
             
-        # Calculate individual equilibrium constants
+        # Calculate individual equilibrium constants with error checking
         K_eq = []
         for i in range(len(sigma_values)):
-            if k_reverse[i] != 0:
+            if k_reverse[i] != 0 and not np.isnan(k_reverse[i]) and not np.isinf(k_reverse[i]):
                 K_i = k_forward[i] / k_reverse[i]
+                if np.isnan(K_i) or np.isinf(K_i):
+                    st.warning(f"Invalid equilibrium constant for reaction {i+1}, using 1.0")
+                    K_i = 1.0
                 K_eq.append(K_i)
             else:
-                st.warning(f"Zero reverse rate constant for reaction {i+1}")
+                st.warning(f"Zero or invalid reverse rate constant for reaction {i+1}, using K_eq = 1.0")
                 K_eq.append(1.0)
         
         # Calculate overall equilibrium constant: K_overall = ∏(K_i^σ_i)
         K_overall = 1.0
         for i, (K_i, sigma_i) in enumerate(zip(K_eq, sigma_values)):
-            if K_i > 0:  # Make sure we can take the logarithm if needed
-                K_overall *= K_i ** sigma_i
+            if K_i > 0 and not np.isnan(K_i) and not np.isinf(K_i):  # Make sure we can take the power
+                try:
+                    contribution = K_i ** sigma_i
+                    if np.isnan(contribution) or np.isinf(contribution):
+                        st.warning(f"Invalid contribution from reaction {i+1}, skipping")
+                        continue
+                    K_overall *= contribution
+                except (OverflowError, ZeroDivisionError):
+                    st.warning(f"Mathematical error in reaction {i+1}, using contribution = 1.0")
+                    continue
             else:
-                st.warning(f"Non-positive equilibrium constant for reaction {i+1}")
-                K_overall *= 1.0
+                st.warning(f"Invalid equilibrium constant for reaction {i+1} in overall calculation")
+        
+        # Final validation of K_overall
+        if np.isnan(K_overall) or np.isinf(K_overall):
+            st.error("Overall equilibrium constant is invalid, using 1.0")
+            K_overall = 1.0
         
         return K_eq, K_overall, T, R, k_forward, k_reverse
         
     except Exception as e:
-        st.error(f"Error calculating equilibrium constants: {e}")
-        return [], 1.0, 300.0, 8.314, [], []
+        st.error(f"Error in equilibrium constant calculation: {str(e)}")
+        # Return safe defaults if calculation fails
+        n_reactions = len(sigma_values)
+        return [1.0] * n_reactions, 1.0, 320.0, 8.314, [1.0] * n_reactions, [1.0] * n_reactions
+
+def create_equilibrium_plots(K_eq_list, sigma_values, reaction_names, K_overall):
+    """
+    Creates comprehensive plots for equilibrium analysis
+    """
+    # Individual equilibrium constants bar chart
+    fig_individual = go.Figure()
+    
+    # Color code based on equilibrium position
+    colors = []
+    for K_i in K_eq_list:
+        if K_i > 10:
+            colors.append('darkgreen')  # Strongly forward
+        elif K_i > 1:
+            colors.append('lightgreen')  # Forward
+        elif K_i == 1:
+            colors.append('yellow')  # Balanced
+        elif K_i > 0.1:
+            colors.append('orange')  # Reverse
+        else:
+            colors.append('red')  # Strongly reverse
+    
+    fig_individual.add_trace(go.Bar(
+        x=reaction_names,
+        y=K_eq_list,
+        marker_color=colors,
+        hovertemplate="<b>%{x}</b><br>K_eq: %{y:.2e}<br>σ: %{customdata:.3f}<extra></extra>",
+        customdata=sigma_values,
+        name="Individual K_eq"
+    ))
+    
+    fig_individual.update_layout(
+        title='Individual Equilibrium Constants by Reaction',
+        xaxis_title='Reaction',
+        yaxis_title='K_eq (log scale)',
+        yaxis_type="log",
+        template='plotly_white',
+        height=500,
+        showlegend=False
+    )
+    
+    # Add horizontal line at K=1 (equilibrium)
+    fig_individual.add_hline(y=1, line_dash="dash", line_color="black", 
+                           annotation_text="K=1 (Equilibrium)")
+    
+    # Contribution to overall equilibrium (K_i^σ_i)
+    contributions = [K_i**sigma_i for K_i, sigma_i in zip(K_eq_list, sigma_values)]
+    
+    fig_contributions = go.Figure()
+    
+    fig_contributions.add_trace(go.Bar(
+        x=reaction_names,
+        y=contributions,
+        marker_color='steelblue',
+        hovertemplate="<b>%{x}</b><br>K_eq^σ: %{y:.2e}<br>K_eq: %{customdata[0]:.2e}<br>σ: %{customdata[1]:.3f}<extra></extra>",
+        customdata=list(zip(K_eq_list, sigma_values)),
+        name="Contributions to K_overall"
+    ))
+    
+    fig_contributions.update_layout(
+        title='Contributions to Overall Equilibrium Constant (K_eq^σ)',
+        xaxis_title='Reaction',
+        yaxis_title='K_eq^σ (log scale)',
+        yaxis_type="log",
+        template='plotly_white',
+        height=500,
+        showlegend=False
+    )
+    
+    return fig_individual, fig_contributions
 
 # =============================================================================
 # FILE HANDLING FUNCTIONS
@@ -663,7 +776,7 @@ if st.session_state.app_mode == 'Generator':
     # Main content area - only shows if we have reactions
     if st.session_state.reactions:
         # Create tabs for different views
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Reaction Mechanism", "📊 Stoichiometric Matrix", "⚛️ Atomic Matrix", "⚙️ Parameters", "🌡️ Thermodynamics"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Reaction Mechanism", "📊 Stoichiometric Matrix", "⚛️ Atomic Matrix", "⚙️ Parameters", "🌡️ Thermodynamics Analysis"])
         
         # =============================
         # TAB 1: REACTION MECHANISM VIEW
@@ -774,38 +887,103 @@ if st.session_state.app_mode == 'Generator':
         # TAB 5: THERMODYNAMICS ANALYSIS
         # ==============================
         with tab5:
-            st.subheader("Thermodynamics Analysis")
+            st.subheader("🌡️ Thermodynamics Analysis")
+            
+            # Explanation of what this analysis does
+            st.markdown("""
+            <div style="background-color: #f0f2f6; padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; border-left: 4px solid #1f77b4;">
+                <h4>🔬 Comprehensive Equilibrium Constant Analysis</h4>
+                <p>This analysis calculates thermodynamic equilibrium constants from your kinetic parameters:</p>
+                <ul>
+                    <li><strong>Individual K_eq:</strong> For each reaction: K_i = k_forward/k_reverse</li>
+                    <li><strong>Overall K_eq:</strong> Combined equilibrium: K_overall = ∏K_i^σ_i</li>
+                    <li><strong>Thermodynamic insight:</strong> Understand which direction is thermodynamically favored</li>
+                    <li><strong>Visual analysis:</strong> Interactive plots and comprehensive interpretation</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
             
             if st.session_state.param_data:
                 # Convert our parameter data to a DataFrame for processing
                 params_df = pd.DataFrame(st.session_state.param_data)
                 
-                # Parameter inspection section - helps users understand their data
-                with st.expander("🔍 Inspect Generated Parameters"):
-                    st.write("**Current Parameters:**")
-                    st.dataframe(params_df, use_container_width=True)
+                # Parameter inspection section
+                with st.expander("🔍 Parameter Inspection"):
+                    col1, col2 = st.columns(2)
                     
-                    # Highlight rate constants specifically
-                    k_params = params_df[params_df['Parameter'].str.contains(r'^k\d+', regex=True, na=False)]
+                    with col1:
+                        st.write("**System Parameters:**")
+                        # Temperature and gas constant
+                        temp_row = params_df[params_df['Parameter'].str.lower() == 't']
+                        if not temp_row.empty:
+                            temp_val = float(temp_row['Values'].iloc[0])
+                            st.metric("Temperature", f"{temp_val:.1f} K")
+                        else:
+                            st.warning("Temperature (T) not found")
+                        
+                        r_row = params_df[params_df['Parameter'].str.lower() == 'r']
+                        if not r_row.empty:
+                            r_val = float(r_row['Values'].iloc[0])
+                            st.metric("Gas Constant", f"{r_val:.3f} J/(mol·K)")
+                        else:
+                            st.warning("Gas constant (R) not found")
+                    
+                    with col2:
+                        st.write("**Rate Constants Analysis:**")
+                        # Analyze rate constants
+                        k_params = params_df[params_df['Parameter'].str.contains(r'^k\d+', regex=True, na=False)]
+                        if not k_params.empty:
+                            st.metric("Rate Constants Found", len(k_params))
+                            
+                            # Check for forward/reverse pattern
+                            forward_k = k_params[k_params['Parameter'].str.endswith('f')]
+                            reverse_k = k_params[k_params['Parameter'].str.endswith('r')]
+                            
+                            if len(forward_k) > 0 and len(reverse_k) > 0:
+                                st.success("✅ Forward/Reverse pattern detected")
+                            else:
+                                st.info("ℹ️ Using alternating pattern detection")
+                        else:
+                            st.error("❌ No rate constants found")
+                    
+                    # Show rate constants table
                     if not k_params.empty:
-                        st.write("**Rate Constants Found:**")
-                        st.dataframe(k_params, use_container_width=True)
+                        st.write("**All Rate Constants:**")
+                        st.dataframe(k_params[['Parameter', 'Values', 'Units']], use_container_width=True)
                 
-                # Let user choose how their rate constants are organized
-                st.markdown("**Rate Constant Pattern:**")
-                k_pattern_gen = st.radio(
-                    "How are your rate constants organized?",
-                    ["auto", "alternating"],
-                    format_func=lambda x: {
-                        "auto": "Auto-detect (kXf/kXr pattern)",
-                        "alternating": "Alternating (k1=forward, k2=reverse, k3=forward, k4=reverse...)"
-                    }[x],
-                    help="Select how your rate constants are named/organized",
-                    key="gen_k_pattern"
-                )
+                # Rate constant pattern selection
+                st.markdown("### 🔧 Rate Constant Configuration")
                 
-                # Allow inline parameter editing
-                st.markdown("**Edit Parameters:**")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    k_pattern_gen = st.radio(
+                        "Rate constant organization:",
+                        ["auto", "alternating"],
+                        format_func=lambda x: {
+                            "auto": "Auto-detect (kXf/kXr pattern)",
+                            "alternating": "Alternating (k1=forward, k2=reverse, k3=forward, k4=reverse...)"
+                        }[x],
+                        help="Select how your rate constants are named/organized",
+                        key="gen_k_pattern"
+                    )
+                
+                with col2:
+                    # Show detected pattern
+                    k_params = params_df[params_df['Parameter'].str.contains(r'k', regex=True, na=False)]
+                    if not k_params.empty:
+                        k_names = k_params['Parameter'].tolist()
+                        has_f_suffix = any('f' in k.lower() for k in k_names)
+                        has_r_suffix = any('r' in k.lower() for k in k_names)
+                        
+                        if has_f_suffix and has_r_suffix:
+                            st.success("✅ Detected: Forward/Reverse suffixes")
+                        else:
+                            st.info("ℹ️ Detected: Sequential numbering")
+                
+                # Parameter editing with validation
+                st.markdown("### ✏️ Edit Parameters")
+                
                 edited_params_gen = st.data_editor(
                     params_df,
                     use_container_width=True,
@@ -822,26 +1000,47 @@ if st.session_state.app_mode == 'Generator':
                 # Update session state with any parameter edits
                 st.session_state.param_data = edited_params_gen.to_dict('records')
                 
+                # Stoichiometric numbers section
+                st.markdown("---")
+                st.subheader("📏 Stoichiometric Numbers (σ)")
+                
+                # Explanation
+                st.markdown("""
+                **What are stoichiometric numbers?**
+                These coefficients determine how each elementary reaction contributes to the overall process:
+                - **σ = 1**: Reaction occurs once per overall cycle
+                - **σ = 2**: Reaction occurs twice per overall cycle  
+                - **σ = 0**: Reaction is in side equilibrium
+                - **σ = -1**: Reaction runs in reverse direction
+                """)
+                
                 # Get the number of reactions for sigma input
                 num_reactions = len(st.session_state.reactions)
                 
-                st.markdown("---")
-                st.subheader("Stoichiometric Numbers (σ)")
-                st.markdown("Enter the stoichiometric number for each reaction step:")
+                # Show current reactions for reference
+                with st.expander("📋 Current Reaction Mechanism"):
+                    for i, (_, reactants, products, original) in enumerate(st.session_state.reactions):
+                        st.write(f"**r{i+1}:** {original}")
                 
-                # Initialize sigma values for generator mode
+                # Initialize sigma values
                 if f'sigma_values_gen' not in st.session_state:
                     st.session_state.sigma_values_gen = [1.0] * num_reactions
                 elif len(st.session_state.sigma_values_gen) != num_reactions:
                     st.session_state.sigma_values_gen = [1.0] * num_reactions
                 
                 # Create input fields for sigma values
+                st.write("**Enter stoichiometric number for each reaction:**")
                 sigma_inputs_gen = []
-                cols = st.columns(min(4, num_reactions))
                 
+                # Create a more organized layout
                 for i in range(num_reactions):
-                    col_idx = i % 4
-                    with cols[col_idx]:
+                    col1, col2, col3 = st.columns([2, 1, 3])
+                    
+                    with col1:
+                        original_reaction = st.session_state.reactions[i][3] if i < len(st.session_state.reactions) else f"r{i+1}"
+                        st.write(f"**r{i+1}:**")
+                    
+                    with col2:
                         sigma_val = st.number_input(
                             f"σ{i+1}",
                             value=st.session_state.sigma_values_gen[i],
@@ -851,76 +1050,348 @@ if st.session_state.app_mode == 'Generator':
                             help=f"Stoichiometric number for reaction r{i+1}"
                         )
                         sigma_inputs_gen.append(sigma_val)
+                    
+                    with col3:
+                        # Show the actual reaction
+                        st.code(original_reaction, language=None)
                 
                 st.session_state.sigma_values_gen = sigma_inputs_gen
                 
-                # Show current reactions for reference
-                with st.expander("📋 Current Reactions"):
-                    for i, (_, reactants, products, original) in enumerate(st.session_state.reactions):
-                        st.write(f"**r{i+1}:** {original}")
+                # Validation section
+                st.markdown("### ✅ Pre-calculation Validation")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    # Rate constant validation
+                    k_params = edited_params_gen[edited_params_gen['Parameter'].str.contains(r'k', regex=True, na=False)]
+                    expected_k_count = num_reactions * 2  # Forward and reverse for each reaction
+                    
+                    if len(k_params) >= expected_k_count:
+                        st.success(f"✅ Rate constants: {len(k_params)}/{expected_k_count}")
+                    else:
+                        st.warning(f"⚠️ Rate constants: {len(k_params)}/{expected_k_count}")
+                
+                with col2:
+                    # Temperature validation
+                    temp_params = edited_params_gen[edited_params_gen['Parameter'].str.lower() == 't']
+                    if len(temp_params) > 0:
+                        temp_val = float(temp_params['Values'].iloc[0])
+                        if 200 <= temp_val <= 2000:
+                            st.success(f"✅ Temperature: {temp_val:.1f} K")
+                        else:
+                            st.warning(f"⚠️ Temperature: {temp_val:.1f} K (unusual)")
+                    else:
+                        st.error("❌ Temperature missing")
+                
+                with col3:
+                    # Sigma validation
+                    sigma_sum = sum(st.session_state.sigma_values_gen)
+                    st.info(f"ℹ️ Σσ = {sigma_sum:.3f}")
+                    if abs(sigma_sum) < 0.1:
+                        st.warning("Very small Σσ - check if correct")
                 
                 # Main calculation button
-                if st.button("🧮 Calculate Overall Equilibrium", type="primary", key="gen_calc_eq"):
-                    K_eq_list_gen, K_overall_gen, T_gen, R_gen, k_forward_gen, k_reverse_gen = calculate_equilibrium_constants(
-                        edited_params_gen, st.session_state.sigma_values_gen, k_pattern_gen
-                    )
+                if st.button("🧮 Calculate Equilibrium Analysis", type="primary", key="gen_calc_eq"):
                     
-                    st.markdown("---")
-                    st.subheader("🎯 Results")
-                    
-                    # Show which rate constants were actually used
-                    st.markdown("**Rate Constants Used:**")
-                    rate_data_gen = []
-                    for i, (kf, kr) in enumerate(zip(k_forward_gen, k_reverse_gen)):
-                        # Get the original reaction for reference
-                        original_reaction = st.session_state.reactions[i][3] if i < len(st.session_state.reactions) else f"r{i+1}"
-                        rate_data_gen.append({
-                            'Reaction': f'r{i+1}',
-                            'Original': original_reaction,
-                            'k_forward': f'{kf:.6e}',
-                            'k_reverse': f'{kr:.6e}',
-                            'K_eq (kf/kr)': f'{kf/kr if kr != 0 else "∞":.6e}'
-                        })
-                    
-                    rate_df_gen = pd.DataFrame(rate_data_gen)
-                    st.dataframe(rate_df_gen, use_container_width=True)
-                    
-                    # Show the equilibrium calculation breakdown
-                    st.markdown("**Equilibrium Calculation:**")
-                    eq_data_gen = []
-                    for i, (K_i, sigma_i) in enumerate(zip(K_eq_list_gen, st.session_state.sigma_values_gen)):
-                        eq_data_gen.append({
-                            'Reaction': f'r{i+1}',
-                            'K_eq': f'{K_i:.6e}',
-                            'σ': f'{sigma_i:.3f}',
-                            'K^σ': f'{K_i**sigma_i:.6e}'
-                        })
-                    
-                    eq_df_gen = pd.DataFrame(eq_data_gen)
-                    st.dataframe(eq_df_gen, use_container_width=True)
-                    
-                    # Display the overall equilibrium constant
-                    st.markdown("**Overall Equilibrium Constant:**")
-                    st.latex(r"K_{overall,eq} = \prod_{i} K_{i,eq}^{\sigma_i}")
-                    
-                    # Format the result nicely in scientific notation
-                    if K_overall_gen != 0:
-                        exponent = math.floor(math.log10(abs(K_overall_gen)))
-                        mantissa = K_overall_gen / (10 ** exponent)
-                        st.markdown(f"**K_overall = {mantissa:.4f} × 10^{exponent}**")
-                    else:
-                        st.markdown("**K_overall = 0**")
-                    
-                    # Additional thermodynamic information
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Temperature", f"{T_gen:.1f} K")
-                    with col2:
-                        st.metric("Gas Constant", f"{R_gen:.5f} J/(mol·K)")
-                    with col3:
-                        if K_overall_gen > 0:
-                            ln_K = math.log(K_overall_gen)
-                            st.metric("ln(K_overall)", f"{ln_K:.4f}")
+                    with st.spinner("Performing equilibrium analysis..."):
+                        try:
+                            # Calculate equilibrium constants using function
+                            K_eq_list_gen, K_overall_gen, T_gen, R_gen, k_forward_gen, k_reverse_gen = calculate_equilibrium_constants(
+                                edited_params_gen, st.session_state.sigma_values_gen, k_pattern_gen
+                            )
+                            
+                            # Store comprehensive results
+                            st.session_state.equilibrium_results = {
+                                'K_eq_list': K_eq_list_gen,
+                                'K_overall': K_overall_gen,
+                                'sigma_values': st.session_state.sigma_values_gen,
+                                'k_forward': k_forward_gen,
+                                'k_reverse': k_reverse_gen,
+                                'temperature': T_gen,
+                                'gas_constant': R_gen,
+                                'reaction_names': [f"r{i+1}" for i in range(len(K_eq_list_gen))]
+                            }
+                            
+                            st.success("✅ Equilibrium analysis completed!")
+                            
+                            # Results display
+                            st.markdown("---")
+                            st.markdown("## 🎯 Equilibrium Analysis Results")
+                            
+                            # Summary metrics at the top
+                            col1, col2, col3, col4 = st.columns(4)
+                            
+                            with col1:
+                                st.metric("Temperature", f"{T_gen:.1f} K")
+                            
+                            with col2:
+                                if K_overall_gen > 0 and not np.isinf(K_overall_gen):
+                                    ln_K = math.log(K_overall_gen)
+                                    st.metric("ln(K_overall)", f"{ln_K:.4f}")
+                                else:
+                                    st.metric("ln(K_overall)", "Undefined")
+                            
+                            with col3:
+                                if K_overall_gen > 0 and not np.isinf(K_overall_gen):
+                                    # Calculate standard Gibbs free energy change
+                                    delta_G = -R_gen * T_gen * math.log(K_overall_gen) / 1000  # Convert to kJ/mol
+                                    st.metric("ΔG° (kJ/mol)", f"{delta_G:.2f}")
+                                else:
+                                    st.metric("ΔG° (kJ/mol)", "Undefined")
+                            
+                            with col4:
+                                # Show overall equilibrium constant with scientific notation
+                                if K_overall_gen != 0 and not np.isinf(K_overall_gen):
+                                    exponent = math.floor(math.log10(abs(K_overall_gen)))
+                                    mantissa = K_overall_gen / (10 ** exponent)
+                                    st.metric("K_overall", f"{mantissa:.2f}×10^{exponent}")
+                                else:
+                                    st.metric("K_overall", f"{K_overall_gen}")
+                            
+                            # Thermodynamic interpretation
+                            st.subheader("🔬 Thermodynamic Interpretation")
+                            
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.markdown("**Overall Process:**")
+                                if K_overall_gen > 1000:
+                                    st.success("⚡ **Strongly favors products** - Excellent thermodynamics")
+                                elif K_overall_gen > 1:
+                                    st.info("➡️ **Favors products** - Good thermodynamics")
+                                elif K_overall_gen == 1:
+                                    st.warning("⚖️ **Equilibrium balanced** - Marginal thermodynamics")
+                                elif K_overall_gen > 0.001:
+                                    st.info("⬅️ **Favors reactants** - May need optimization")
+                                else:
+                                    st.error("⚡ **Strongly favors reactants** - Poor thermodynamics")
+                            
+                            with col2:
+                                st.markdown("**Process Feasibility:**")
+                                if K_overall_gen > 100:
+                                    st.success("✅ **Highly feasible** - Should proceed well")
+                                elif K_overall_gen > 1:
+                                    st.success("✅ **Feasible** - Favorable conditions")
+                                elif K_overall_gen > 0.01:
+                                    st.warning("⚠️ **Marginally feasible** - Consider optimization")
+                                else:
+                                    st.error("❌ **Not feasible** - Requires extreme conditions")
+                            
+                            # Individual reaction analysis table
+                            st.subheader("📊 Individual Reaction Analysis")
+                            
+                            eq_data = []
+                            for i, (K_i, sigma_i) in enumerate(zip(K_eq_list_gen, st.session_state.sigma_values_gen)):
+                                # Get the original reaction for reference
+                                original_reaction = st.session_state.reactions[i][3] if i < len(st.session_state.reactions) else f"r{i+1}"
+                                
+                                # Determine thermodynamic favorability
+                                if K_i > 100:
+                                    favorability = "Strongly Forward"
+                                    color = "🟢"
+                                elif K_i > 1:
+                                    favorability = "Forward"
+                                    color = "🔵"
+                                elif K_i == 1:
+                                    favorability = "Balanced"
+                                    color = "🟡"
+                                elif K_i > 0.01:
+                                    favorability = "Reverse"
+                                    color = "🟠"
+                                else:
+                                    favorability = "Strongly Reverse"
+                                    color = "🔴"
+                                
+                                eq_data.append({
+                                    'Reaction': f"r{i+1}",
+                                    'Original_Equation': original_reaction,
+                                    'k_forward': f'{k_forward_gen[i]:.2e}',
+                                    'k_reverse': f'{k_reverse_gen[i]:.2e}',
+                                    'K_eq': f'{K_i:.2e}',
+                                    'σ': f'{sigma_i:.3f}',
+                                    'K_eq^σ': f'{K_i**sigma_i:.2e}',
+                                    'Favorability': f'{color} {favorability}'
+                                })
+                            
+                            eq_df = pd.DataFrame(eq_data)
+                            st.dataframe(eq_df, use_container_width=True)
+                            
+                            # Visual analysis
+                            st.subheader("📈 Visual Analysis")
+                            
+                            # Get reaction names for plotting
+                            reaction_names = [f"r{i+1}: {st.session_state.reactions[i][3][:20]}..." if len(st.session_state.reactions[i][3]) > 20 
+                                            else f"r{i+1}: {st.session_state.reactions[i][3]}" 
+                                            for i in range(len(K_eq_list_gen))]
+                            
+                            # Create plots
+                            fig_individual, fig_contributions = create_equilibrium_plots(
+                                K_eq_list_gen, st.session_state.sigma_values_gen, 
+                                reaction_names, K_overall_gen
+                            )
+                            
+                            # Display plots
+                            st.plotly_chart(fig_individual, use_container_width=True)
+                            st.plotly_chart(fig_contributions, use_container_width=True)
+                            
+                            # Mechanism analysis
+                            st.subheader("🔬 Mechanism Analysis")
+                            
+                            # Find rate-limiting and driving steps
+                            min_K = min(K_eq_list_gen)
+                            min_K_idx = K_eq_list_gen.index(min_K)
+                            min_K_reaction = f"r{min_K_idx+1}"
+                            
+                            max_K = max(K_eq_list_gen)
+                            max_K_idx = K_eq_list_gen.index(max_K)
+                            max_K_reaction = f"r{max_K_idx+1}"
+                            
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                st.markdown("**🚧 Potential Thermodynamic Bottlenecks:**")
+                                if min_K < 0.1:
+                                    st.write(f"• **{min_K_reaction}**: K = {min_K:.2e} (thermodynamically unfavorable)")
+                                    st.write(f"  Original: {st.session_state.reactions[min_K_idx][3]}")
+                                    st.write("  💡 **Recommendation:** Optimize conditions for this step")
+                                else:
+                                    st.write("• ✅ No major thermodynamic bottlenecks detected")
+                                
+                                # Check for highly unfavorable steps
+                                unfavorable_steps = [i for i, K in enumerate(K_eq_list_gen) if K < 0.01]
+                                if unfavorable_steps:
+                                    st.write("**Additional unfavorable steps:**")
+                                    for idx in unfavorable_steps:
+                                        st.write(f"• r{idx+1}: K = {K_eq_list_gen[idx]:.2e}")
+                            
+                            with col2:
+                                st.markdown("**⚡ Thermodynamic Driving Forces:**")
+                                if max_K > 10:
+                                    st.write(f"• **{max_K_reaction}**: K = {max_K:.2e} (strongly favored)")
+                                    st.write(f"  Original: {st.session_state.reactions[max_K_idx][3]}")
+                                    st.write("  ✅ **This step provides strong driving force**")
+                                else:
+                                    st.write("• All steps have moderate equilibrium constants")
+                                
+                                # Check for other highly favorable steps
+                                favorable_steps = [i for i, K in enumerate(K_eq_list_gen) if K > 100]
+                                if len(favorable_steps) > 1:
+                                    st.write("**Additional driving forces:**")
+                                    for idx in favorable_steps:
+                                        if idx != max_K_idx:
+                                            st.write(f"• r{idx+1}: K = {K_eq_list_gen[idx]:.2e}")
+                            
+                            # Practical recommendations
+                            st.subheader("💡 Practical Recommendations")
+                            
+                            recommendations = []
+                            
+                            # Overall thermodynamics recommendations
+                            if K_overall_gen > 1000:
+                                recommendations.append("✅ **Excellent thermodynamics** - Reaction should proceed well under standard conditions")
+                                recommendations.append("🎯 **Focus on kinetics** - Thermodynamics are favorable, optimize rate constants and mass transfer")
+                            elif K_overall_gen > 1:
+                                recommendations.append("✅ **Good thermodynamics** - Reaction is thermodynamically favorable")
+                                recommendations.append("⚖️ **Balanced optimization** - Consider both thermodynamic and kinetic improvements")
+                            elif K_overall_gen > 0.001:
+                                recommendations.append("⚠️ **Marginal thermodynamics** - Consider temperature, pressure, or concentration optimization")
+                                recommendations.append("🌡️ **Temperature sensitivity** - Higher temperatures might improve equilibrium position")
+                            else:
+                                recommendations.append("❌ **Poor thermodynamics** - Reaction may require extreme conditions or process coupling")
+                                recommendations.append("🔄 **Process redesign** - Consider alternative pathways or reaction coupling")
+                            
+                            # Specific step recommendations
+                            unfavorable_steps = [i for i, K in enumerate(K_eq_list_gen) if K < 0.01]
+                            if unfavorable_steps:
+                                step_names = [f"r{i+1}" for i in unfavorable_steps]
+                                recommendations.append(f"🔧 **Optimize specific steps:** {', '.join(step_names)} have very low K_eq values")
+                                recommendations.append("💡 **Consider:** Alternative catalysts, modified conditions, or step elimination")
+                            
+                            # Temperature optimization suggestions
+                            if any(K > 1000 for K in K_eq_list_gen) and any(K < 0.001 for K in K_eq_list_gen):
+                                recommendations.append("🌡️ **Temperature optimization** may help balance competing thermodynamic requirements")
+                                recommendations.append("📊 **Consider:** Van 't Hoff analysis to determine optimal temperature")
+                            
+                            # Process integration recommendations
+                            if 0.1 < K_overall_gen < 10:
+                                recommendations.append("🔗 **Process integration** - Consider coupling with thermodynamically favorable reactions")
+                                recommendations.append("♻️ **Separation strategy** - Product removal might shift equilibrium favorably")
+                            
+                            # Display recommendations
+                            for i, rec in enumerate(recommendations, 1):
+                                st.write(f"{i}. {rec}")
+                            
+                            # Download section
+                            st.subheader("💾 Download Results")
+                            
+                            # Create comprehensive results for download
+                            download_data = []
+                            for i in range(len(K_eq_list_gen)):
+                                original_reaction = st.session_state.reactions[i][3] if i < len(st.session_state.reactions) else f"r{i+1}"
+                                download_data.append({
+                                    'Reaction_ID': f"r{i+1}",
+                                    'Original_Equation': original_reaction,
+                                    'k_forward': k_forward_gen[i],
+                                    'k_reverse': k_reverse_gen[i],
+                                    'K_equilibrium': K_eq_list_gen[i],
+                                    'Sigma': st.session_state.sigma_values_gen[i],
+                                    'K_eq_to_sigma': K_eq_list_gen[i]**st.session_state.sigma_values_gen[i],
+                                    'ln_K_eq': math.log(K_eq_list_gen[i]) if K_eq_list_gen[i] > 0 else 'Undefined',
+                                    'Delta_G_individual_kJ_mol': -R_gen * T_gen * math.log(K_eq_list_gen[i]) / 1000 if K_eq_list_gen[i] > 0 else 'Undefined',
+                                    'Thermodynamic_Favorability': 'Forward' if K_eq_list_gen[i] > 1 else 'Reverse' if K_eq_list_gen[i] < 1 else 'Balanced'
+                                })
+                            
+                            # Add overall summary
+                            overall_summary = {
+                                'Reaction_ID': 'OVERALL',
+                                'Original_Equation': 'Combined Process',
+                                'k_forward': '',
+                                'k_reverse': '',
+                                'K_equilibrium': K_overall_gen,
+                                'Sigma': '',
+                                'K_eq_to_sigma': '',
+                                'ln_K_eq': math.log(K_overall_gen) if K_overall_gen > 0 else 'Undefined',
+                                'Delta_G_individual_kJ_mol': -R_gen * T_gen * math.log(K_overall_gen) / 1000 if K_overall_gen > 0 else 'Undefined',
+                                'Thermodynamic_Favorability': 'Forward' if K_overall_gen > 1 else 'Reverse' if K_overall_gen < 1 else 'Balanced'
+                            }
+                            download_data.append(overall_summary)
+                            
+                            # Add system parameters
+                            system_params = {
+                                'Reaction_ID': 'SYSTEM_PARAMS',
+                                'Original_Equation': f'T={T_gen}K, R={R_gen}J/(mol·K)',
+                                'k_forward': f'Sum_sigma={sum(st.session_state.sigma_values_gen):.3f}',
+                                'k_reverse': f'Num_reactions={len(K_eq_list_gen)}',
+                                'K_equilibrium': '',
+                                'Sigma': '',
+                                'K_eq_to_sigma': '',
+                                'ln_K_eq': '',
+                                'Delta_G_individual_kJ_mol': '',
+                                'Thermodynamic_Favorability': ''
+                            }
+                            download_data.append(system_params)
+                            
+                            results_df = pd.DataFrame(download_data)
+                            csv = results_df.to_csv(index=False)
+                            
+                            st.download_button(
+                                label="📄 Download Equilibrium Analysis CSV",
+                                data=csv,
+                                file_name="thermodynamic_equilibrium_analysis.csv",
+                                mime="text/csv",
+                                help="Download comprehensive equilibrium analysis results with thermodynamic properties"
+                            )
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error in equilibrium analysis: {str(e)}")
+                            with st.expander("🔧 Error Details"):
+                                st.write(str(e))
+                                st.write("**Troubleshooting:**")
+                                st.write("• Verify all rate constants are positive numbers")
+                                st.write("• Check that forward and reverse rate constants are properly paired")
+                                st.write("• Ensure temperature is reasonable (200-2000 K)")
+                                st.write("• Validate stoichiometric numbers are appropriate")
                 
             else:
                 st.info("Add reactions first to generate parameters for thermodynamics analysis.")
@@ -993,25 +1464,6 @@ if st.session_state.app_mode == 'Generator':
         with col4:
             surface_count = len([s for s in st.session_state.species_list if s.endswith('*')])
             st.metric("Surface Species", surface_count)
-        
-        # Species ordering display
-        with st.expander("📋 Current Species Ordering (Gas → Surface, * Last)"):
-            col1, col2 = st.columns(2)
-            gas_species = [s for s in st.session_state.species_list if not s.endswith('*')]
-            surface_species = [s for s in st.session_state.species_list if s.endswith('*')]
-            
-            with col1:
-                st.write("**Gas Species:**")
-                for i, species in enumerate(gas_species):
-                    st.write(f"{i+1}. {species}")
-            
-            with col2:
-                st.write("**Surface Species (Empty Sites Last):**")
-                for i, species in enumerate(surface_species):
-                    if species == '*':
-                        st.write(f"{i+1}. {species} ← Empty Sites")
-                    else:
-                        st.write(f"{i+1}. {species}")
 
     else:
         # Welcome screen when no reactions have been added yet
@@ -1022,7 +1474,7 @@ if st.session_state.app_mode == 'Generator':
         - **Stoichiometric Matrix**: Shows how each reaction affects each species
         - **Atomic Matrix**: Shows atomic composition of each species  
         - **Parameter Table**: Editable parameters for reaction kinetics
-        - **Thermodynamics Analysis**: Calculate overall equilibrium constants
+        - **Thermodynamics Analysis**: Comprehensive equilibrium constant calculations with visual analysis
         
         All matrices maintain consistent ordering: **Gas → Surface → Empty Sites (*)** last.
         
@@ -1045,13 +1497,9 @@ if st.session_state.app_mode == 'Generator':
         - **Empty Sites Last**: `*` (empty sites) always appear in the last column/row
         - **Consistency Check**: Both matrices maintain identical species ordering
         - **Mass Balance**: Verify atom conservation across all reactions
-        - **Thermodynamics**: Calculate K_overall = ∏K_i^σ_i using generated parameters
-        
-        ### 🌡️ Thermodynamics Analysis:
-        After adding reactions, use the **Thermodynamics** tab to:
-        - Edit rate constants and parameters
-        - Set stoichiometric numbers (σ) for each step
-        - Calculate individual and overall equilibrium constants
+        - **Thermodynamics**: Calculate K_overall = ∏K_i^σ_i with comprehensive analysis
+        - **Visual Analysis**: Interactive plots and detailed interpretations
+        - **Smart Recommendations**: Get practical suggestions for your mechanism
         """)
 
 # =============================================================================
@@ -1116,7 +1564,7 @@ else:
         
         ### 🔍 Available Analysis Types:
         - **Mass Balance**: Verify atom conservation across reactions
-        - **Thermodynamics**: Calculate overall equilibrium constant using K_overall = ∏K_i^σ_i
+        - **Thermodynamics**: Comprehensive equilibrium constant analysis with K_overall = ∏K_i^σ_i
         """)
     else:
         # Load the uploaded files
@@ -1169,40 +1617,75 @@ else:
             else:
                 st.markdown("### 🌡️ Thermodynamics Analysis")
                 
+                # Explanation of what this analysis does
+                st.markdown("""
+                <div style="background-color: #f0f2f6; padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; border-left: 4px solid #1f77b4;">
+                    <h4>🔬 Comprehensive Equilibrium Constant Analysis</h4>
+                    <p>This analysis calculates thermodynamic equilibrium constants from your kinetic parameters:</p>
+                    <ul>
+                        <li><strong>Individual K_eq:</strong> For each reaction: K_i = k_forward/k_reverse</li>
+                        <li><strong>Overall K_eq:</strong> Combined equilibrium: K_overall = ∏K_i^σ_i</li>
+                        <li><strong>Thermodynamic insight:</strong> Understand which direction is thermodynamically favored</li>
+                        <li><strong>Visual analysis:</strong> Interactive plots and comprehensive interpretation</li>
+                    </ul>
+                </div>
+                """, unsafe_allow_html=True)
+                
                 if 'params' in loaded_files:
                     # Display and allow editing of parameters
                     st.subheader("Parameters")
                     
                     # Parameter inspection section
-                    with st.expander("🔍 Inspect Parameter File"):
-                        st.write("**All Parameters in File:**")
+                    with st.expander("🔍 Parameter Inspection"):
                         param_preview = loaded_files['params'].copy()
                         
-                        # Highlight rate constants
-                        k_params = param_preview[param_preview['Parameter'].str.contains(r'^k\d+', regex=True, na=False)]
-                        if not k_params.empty:
-                            st.write("**Rate Constants Found:**")
-                            st.dataframe(k_params, use_container_width=True)
-                            
-                            st.write("**Rate Constant Pattern Detection:**")
-                            k_names = k_params['Parameter'].tolist()
-                            
-                            # Try to detect the naming pattern
-                            has_f_suffix = any('f' in k.lower() for k in k_names)
-                            has_r_suffix = any('r' in k.lower() for k in k_names)
-                            has_alternating = len(k_names) >= 2
-                            
-                            if has_f_suffix and has_r_suffix:
-                                st.success("✅ Detected: Forward/Reverse suffixes (kXf, kXr)")
-                            elif has_alternating:
-                                st.info("ℹ️ Detected: Sequential numbering (possibly alternating)")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write("**System Parameters:**")
+                            # Temperature and gas constant
+                            temp_row = param_preview[param_preview['Parameter'].str.lower() == 't']
+                            if not temp_row.empty:
+                                temp_val = float(temp_row['Values'].iloc[0])
+                                st.metric("Temperature", f"{temp_val:.1f} K")
                             else:
-                                st.warning("⚠️ Unknown rate constant pattern")
+                                st.warning("Temperature (T) not found")
+                            
+                            r_row = param_preview[param_preview['Parameter'].str.lower() == 'r']
+                            if not r_row.empty:
+                                r_val = float(r_row['Values'].iloc[0])
+                                st.metric("Gas Constant", f"{r_val:.3f} J/(mol·K)")
+                            else:
+                                st.warning("Gas constant (R) not found")
+                        
+                        with col2:
+                            st.write("**Rate Constants Analysis:**")
+                            # Analyze rate constants
+                            k_params = param_preview[param_preview['Parameter'].str.contains(r'k', regex=True, na=False)]
+                            if not k_params.empty:
+                                st.metric("Rate Constants Found", len(k_params))
+                                
+                                # Check for forward/reverse pattern
+                                forward_k = k_params[k_params['Parameter'].str.endswith('f')]
+                                reverse_k = k_params[k_params['Parameter'].str.endswith('r')]
+                                
+                                if len(forward_k) > 0 and len(reverse_k) > 0:
+                                    st.success("✅ Forward/Reverse pattern detected")
+                                    st.write(f"Forward: {len(forward_k)}, Reverse: {len(reverse_k)}")
+                                else:
+                                    st.info("ℹ️ Using alternating pattern detection")
+                            else:
+                                st.error("❌ No rate constants found")
+                        
+                        # Show all parameters table
+                        st.write("**All Parameters:**")
+                        st.dataframe(param_preview, use_container_width=True)
                     
-                    # Rate constant pattern selector
-                    st.markdown("**Rate Constant Pattern:**")
+                    # Rate constant pattern selection
+                    st.markdown("### 🔧 Rate Constant Configuration")
+                    
                     k_pattern = st.radio(
-                        "How are your rate constants organized?",
+                        "Rate constant organization:",
                         ["auto", "alternating"],
                         format_func=lambda x: {
                             "auto": "Auto-detect (kXf/kXr or similar)",
@@ -1212,6 +1695,8 @@ else:
                     )
                     
                     # Editable parameters table
+                    st.markdown("### ✏️ Edit Parameters")
+                    
                     edited_params = st.data_editor(
                         loaded_files['params'],
                         use_container_width=True,
@@ -1226,8 +1711,22 @@ else:
                         num_reactions = loaded_files['stoich'].shape[0]
                         
                         st.markdown("---")
-                        st.subheader("Stoichiometric Numbers (σ)")
+                        st.subheader("📏 Stoichiometric Numbers (σ)")
                         st.markdown("Enter the stoichiometric number for each reaction step:")
+                        
+                        # Explanation
+                        with st.expander("📖 Understanding Stoichiometric Numbers"):
+                            st.markdown("""
+                            **Stoichiometric numbers (σ) determine how each elementary reaction contributes to the overall process:**
+                            
+                            - **σ = 1**: Reaction occurs once per overall cycle
+                            - **σ = 2**: Reaction occurs twice per overall cycle  
+                            - **σ = 0**: Reaction is in side equilibrium (doesn't contribute)
+                            - **σ = -1**: Reaction runs in reverse direction
+                            
+                            **For a simple linear mechanism:** σ = [1, 1, 1, ...] (all steps occur once)
+                            **For branched mechanisms:** Some σ values may be different
+                            """)
                         
                         # Initialize sigma values if needed
                         if len(st.session_state.sigma_values) != num_reactions:
@@ -1235,82 +1734,384 @@ else:
                         
                         # Create input fields for sigma values
                         sigma_inputs = []
-                        cols = st.columns(min(4, num_reactions))
                         
+                        # Show reaction info if available
+                        if 'stoich' in loaded_files and len(loaded_files['stoich']) > 0:
+                            with st.expander("📋 Reaction Overview"):
+                                for i in range(num_reactions):
+                                    if i < len(loaded_files['stoich']):
+                                        reaction_name = loaded_files['stoich'].iloc[i, 0]
+                                        st.write(f"**r{i+1}:** {reaction_name}")
+                        
+                        # Organized sigma input
+                        cols = st.columns(min(4, num_reactions))
                         for i in range(num_reactions):
                             col_idx = i % 4
                             with cols[col_idx]:
+                                reaction_name = loaded_files['stoich'].iloc[i, 0] if i < len(loaded_files['stoich']) else f"r{i+1}"
                                 sigma_val = st.number_input(
-                                    f"σ{i+1}",
+                                    f"σ{i+1} ({reaction_name})",
                                     value=st.session_state.sigma_values[i],
                                     step=0.1,
                                     format="%.3f",
-                                    key=f"sigma_{i}"
+                                    key=f"analysis_sigma_{i}",
+                                    help=f"Stoichiometric number for {reaction_name}"
                                 )
                                 sigma_inputs.append(sigma_val)
                         
                         st.session_state.sigma_values = sigma_inputs
                         
-                        # Calculate equilibrium constants
-                        if st.button("🧮 Calculate Overall Equilibrium", type="primary"):
-                            K_eq_list, K_overall, T, R, k_forward, k_reverse = calculate_equilibrium_constants(
-                                edited_params, st.session_state.sigma_values, k_pattern
-                            )
-                            st.session_state.equilibrium_constants = K_eq_list
+                        # Validation section
+                        st.markdown("### ✅ Pre-calculation Validation")
+                        
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            # Rate constant validation
+                            k_params = edited_params[edited_params['Parameter'].str.contains(r'k', regex=True, na=False)]
+                            expected_k_count = num_reactions * 2  # Forward and reverse for each reaction
                             
-                            st.markdown("---")
-                            st.subheader("🎯 Results")
-                            
-                            # Display rate constants used
-                            st.markdown("**Rate Constants Used:**")
-                            rate_data = []
-                            for i, (kf, kr) in enumerate(zip(k_forward, k_reverse)):
-                                rate_data.append({
-                                    'Reaction': f'r{i+1}',
-                                    'k_forward': f'{kf:.6e}',
-                                    'k_reverse': f'{kr:.6e}',
-                                    'K_eq (kf/kr)': f'{kf/kr if kr != 0 else "∞":.6e}'
-                                })
-                            
-                            rate_df = pd.DataFrame(rate_data)
-                            st.dataframe(rate_df, use_container_width=True)
-                            
-                            # Display equilibrium calculation
-                            st.markdown("**Equilibrium Calculation:**")
-                            eq_data = []
-                            for i, (K_i, sigma_i) in enumerate(zip(K_eq_list, st.session_state.sigma_values)):
-                                eq_data.append({
-                                    'Reaction': f'r{i+1}',
-                                    'K_eq': f'{K_i:.6e}',
-                                    'σ': f'{sigma_i:.3f}',
-                                    'K^σ': f'{K_i**sigma_i:.6e}'
-                                })
-                            
-                            eq_df = pd.DataFrame(eq_data)
-                            st.dataframe(eq_df, use_container_width=True)
-                            
-                            # Display overall equilibrium constant
-                            st.markdown("**Overall Equilibrium Constant:**")
-                            st.latex(r"K_{overall,eq} = \prod_{i} K_{i,eq}^{\sigma_i}")
-                            
-                            # Format scientific notation nicely
-                            if K_overall != 0:
-                                exponent = math.floor(math.log10(abs(K_overall)))
-                                mantissa = K_overall / (10 ** exponent)
-                                st.markdown(f"**K_overall = {mantissa:.4f} × 10^{exponent}**")
+                            if len(k_params) >= expected_k_count:
+                                st.success(f"✅ Rate constants: {len(k_params)}/{expected_k_count}")
                             else:
-                                st.markdown("**K_overall = 0**")
+                                st.warning(f"⚠️ Rate constants: {len(k_params)}/{expected_k_count}")
+                        
+                        with col2:
+                            # Temperature validation
+                            temp_params = edited_params[edited_params['Parameter'].str.lower() == 't']
+                            if len(temp_params) > 0:
+                                temp_val = float(temp_params['Values'].iloc[0])
+                                if 200 <= temp_val <= 2000:
+                                    st.success(f"✅ Temperature: {temp_val:.1f} K")
+                                else:
+                                    st.warning(f"⚠️ Temperature: {temp_val:.1f} K (unusual)")
+                            else:
+                                st.error("❌ Temperature missing")
+                        
+                        with col3:
+                            # Sigma validation
+                            sigma_sum = sum(st.session_state.sigma_values)
+                            st.info(f"ℹ️ Σσ = {sigma_sum:.3f}")
+                            if abs(sigma_sum) < 0.1:
+                                st.warning("Very small Σσ - check if correct")
+                        
+                        # Calculation button
+                        if st.button("🧮 Calculate Equilibrium Analysis", type="primary"):
                             
-                            # Additional thermodynamic info
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Temperature", f"{T:.1f} K")
-                            with col2:
-                                st.metric("Gas Constant", f"{R:.5f} J/(mol·K)")
-                            with col3:
-                                if K_overall > 0:
-                                    ln_K = math.log(K_overall)
-                                    st.metric("ln(K_overall)", f"{ln_K:.4f}")
+                            with st.spinner("Performing equilibrium analysis..."):
+                                try:
+                                    # Use calculation function
+                                    K_eq_list, K_overall, T, R, k_forward, k_reverse = calculate_equilibrium_constants(
+                                        edited_params, st.session_state.sigma_values, k_pattern
+                                    )
+                                    
+                                    # Store comprehensive results
+                                    st.session_state.equilibrium_results = {
+                                        'K_eq_list': K_eq_list,
+                                        'K_overall': K_overall,
+                                        'sigma_values': st.session_state.sigma_values,
+                                        'k_forward': k_forward,
+                                        'k_reverse': k_reverse,
+                                        'temperature': T,
+                                        'gas_constant': R,
+                                        'reaction_names': [f"r{i+1}" for i in range(len(K_eq_list))]
+                                    }
+                                    
+                                    st.success("✅ Equilibrium analysis completed!")
+                                    
+                                    # Results display - complete analysis
+                                    st.markdown("---")
+                                    st.markdown("## 🎯 Equilibrium Analysis Results")
+                                    
+                                    # Summary metrics at the top
+                                    col1, col2, col3, col4 = st.columns(4)
+                                    
+                                    with col1:
+                                        st.metric("Temperature", f"{T:.1f} K")
+                                    
+                                    with col2:
+                                        if K_overall > 0 and not np.isinf(K_overall):
+                                            ln_K = math.log(K_overall)
+                                            st.metric("ln(K_overall)", f"{ln_K:.4f}")
+                                        else:
+                                            st.metric("ln(K_overall)", "Undefined")
+                                    
+                                    with col3:
+                                        if K_overall > 0 and not np.isinf(K_overall):
+                                            # Calculate standard Gibbs free energy change
+                                            delta_G = -R * T * math.log(K_overall) / 1000  # Convert to kJ/mol
+                                            st.metric("ΔG° (kJ/mol)", f"{delta_G:.2f}")
+                                        else:
+                                            st.metric("ΔG° (kJ/mol)", "Undefined")
+                                    
+                                    with col4:
+                                        # Show overall equilibrium constant with scientific notation
+                                        if K_overall != 0 and not np.isinf(K_overall):
+                                            exponent = math.floor(math.log10(abs(K_overall)))
+                                            mantissa = K_overall / (10 ** exponent)
+                                            st.metric("K_overall", f"{mantissa:.2f}×10^{exponent}")
+                                        else:
+                                            st.metric("K_overall", f"{K_overall}")
+                                    
+                                    # Thermodynamic interpretation
+                                    st.subheader("🔬 Thermodynamic Interpretation")
+                                    
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.markdown("**Overall Process:**")
+                                        if K_overall > 1000:
+                                            st.success("⚡ **Strongly favors products** - Excellent thermodynamics")
+                                        elif K_overall > 1:
+                                            st.info("➡️ **Favors products** - Good thermodynamics")
+                                        elif K_overall == 1:
+                                            st.warning("⚖️ **Equilibrium balanced** - Marginal thermodynamics")
+                                        elif K_overall > 0.001:
+                                            st.info("⬅️ **Favors reactants** - May need optimization")
+                                        else:
+                                            st.error("⚡ **Strongly favors reactants** - Poor thermodynamics")
+                                    
+                                    with col2:
+                                        st.markdown("**Process Feasibility:**")
+                                        if K_overall > 100:
+                                            st.success("✅ **Highly feasible** - Should proceed well")
+                                        elif K_overall > 1:
+                                            st.success("✅ **Feasible** - Favorable conditions")
+                                        elif K_overall > 0.01:
+                                            st.warning("⚠️ **Marginally feasible** - Consider optimization")
+                                        else:
+                                            st.error("❌ **Not feasible** - Requires extreme conditions")
+                                    
+                                    # Individual reaction analysis table
+                                    st.subheader("📊 Individual Reaction Analysis")
+                                    
+                                    eq_data = []
+                                    for i, (K_i, sigma_i) in enumerate(zip(K_eq_list, st.session_state.sigma_values)):
+                                        # Get the reaction name from stoich matrix if available
+                                        if 'stoich' in loaded_files and i < len(loaded_files['stoich']):
+                                            reaction_name = loaded_files['stoich'].iloc[i, 0]
+                                        else:
+                                            reaction_name = f"r{i+1}"
+                                        
+                                        # Determine thermodynamic favorability
+                                        if K_i > 100:
+                                            favorability = "Strongly Forward"
+                                            color = "🟢"
+                                        elif K_i > 1:
+                                            favorability = "Forward"
+                                            color = "🔵"
+                                        elif K_i == 1:
+                                            favorability = "Balanced"
+                                            color = "🟡"
+                                        elif K_i > 0.01:
+                                            favorability = "Reverse"
+                                            color = "🟠"
+                                        else:
+                                            favorability = "Strongly Reverse"
+                                            color = "🔴"
+                                        
+                                        eq_data.append({
+                                            'Reaction': f"r{i+1}",
+                                            'Reaction_Name': reaction_name,
+                                            'k_forward': f'{k_forward[i]:.2e}',
+                                            'k_reverse': f'{k_reverse[i]:.2e}',
+                                            'K_eq': f'{K_i:.2e}',
+                                            'σ': f'{sigma_i:.3f}',
+                                            'K_eq^σ': f'{K_i**sigma_i:.2e}',
+                                            'Favorability': f'{color} {favorability}'
+                                        })
+                                    
+                                    eq_df = pd.DataFrame(eq_data)
+                                    st.dataframe(eq_df, use_container_width=True)
+                                    
+                                    # Visual analysis
+                                    st.subheader("📈 Visual Analysis")
+                                    
+                                    # Get reaction names for plotting
+                                    reaction_names = []
+                                    for i in range(len(K_eq_list)):
+                                        if 'stoich' in loaded_files and i < len(loaded_files['stoich']):
+                                            reaction_name = loaded_files['stoich'].iloc[i, 0]
+                                            if len(reaction_name) > 20:
+                                                reaction_names.append(f"r{i+1}: {reaction_name[:20]}...")
+                                            else:
+                                                reaction_names.append(f"r{i+1}: {reaction_name}")
+                                        else:
+                                            reaction_names.append(f"r{i+1}")
+                                    
+                                    # Create plots
+                                    fig_individual, fig_contributions = create_equilibrium_plots(
+                                        K_eq_list, st.session_state.sigma_values, 
+                                        reaction_names, K_overall
+                                    )
+                                    
+                                    # Display plots
+                                    st.plotly_chart(fig_individual, use_container_width=True)
+                                    st.plotly_chart(fig_contributions, use_container_width=True)
+                                    
+                                    # Mechanism analysis
+                                    st.subheader("🔬 Mechanism Analysis")
+                                    
+                                    # Find rate-limiting and driving steps
+                                    min_K = min(K_eq_list)
+                                    min_K_idx = K_eq_list.index(min_K)
+                                    min_K_reaction = f"r{min_K_idx+1}"
+                                    
+                                    max_K = max(K_eq_list)
+                                    max_K_idx = K_eq_list.index(max_K)
+                                    max_K_reaction = f"r{max_K_idx+1}"
+                                    
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        st.markdown("**🚧 Potential Thermodynamic Bottlenecks:**")
+                                        if min_K < 0.1:
+                                            reaction_name = loaded_files['stoich'].iloc[min_K_idx, 0] if 'stoich' in loaded_files and min_K_idx < len(loaded_files['stoich']) else f"r{min_K_idx+1}"
+                                            st.write(f"• **{min_K_reaction}**: K = {min_K:.2e} (thermodynamically unfavorable)")
+                                            st.write(f"  Reaction: {reaction_name}")
+                                            st.write("  💡 **Recommendation:** Optimize conditions for this step")
+                                        else:
+                                            st.write("• ✅ No major thermodynamic bottlenecks detected")
+                                        
+                                        # Check for highly unfavorable steps
+                                        unfavorable_steps = [i for i, K in enumerate(K_eq_list) if K < 0.01]
+                                        if unfavorable_steps:
+                                            st.write("**Additional unfavorable steps:**")
+                                            for idx in unfavorable_steps:
+                                                st.write(f"• r{idx+1}: K = {K_eq_list[idx]:.2e}")
+                                    
+                                    with col2:
+                                        st.markdown("**⚡ Thermodynamic Driving Forces:**")
+                                        if max_K > 10:
+                                            reaction_name = loaded_files['stoich'].iloc[max_K_idx, 0] if 'stoich' in loaded_files and max_K_idx < len(loaded_files['stoich']) else f"r{max_K_idx+1}"
+                                            st.write(f"• **{max_K_reaction}**: K = {max_K:.2e} (strongly favored)")
+                                            st.write(f"  Reaction: {reaction_name}")
+                                            st.write("  ✅ **This step provides strong driving force**")
+                                        else:
+                                            st.write("• All steps have moderate equilibrium constants")
+                                        
+                                        # Check for other highly favorable steps
+                                        favorable_steps = [i for i, K in enumerate(K_eq_list) if K > 100]
+                                        if len(favorable_steps) > 1:
+                                            st.write("**Additional driving forces:**")
+                                            for idx in favorable_steps:
+                                                if idx != max_K_idx:
+                                                    st.write(f"• r{idx+1}: K = {K_eq_list[idx]:.2e}")
+                                    
+                                    # Practical recommendations
+                                    st.subheader("💡 Practical Recommendations")
+                                    
+                                    recommendations = []
+                                    
+                                    # Overall thermodynamics recommendations
+                                    if K_overall > 1000:
+                                        recommendations.append("✅ **Excellent thermodynamics** - Reaction should proceed well under standard conditions")
+                                        recommendations.append("🎯 **Focus on kinetics** - Thermodynamics are favorable, optimize rate constants and mass transfer")
+                                    elif K_overall > 1:
+                                        recommendations.append("✅ **Good thermodynamics** - Reaction is thermodynamically favorable")
+                                        recommendations.append("⚖️ **Balanced optimization** - Consider both thermodynamic and kinetic improvements")
+                                    elif K_overall > 0.001:
+                                        recommendations.append("⚠️ **Marginal thermodynamics** - Consider temperature, pressure, or concentration optimization")
+                                        recommendations.append("🌡️ **Temperature sensitivity** - Higher temperatures might improve equilibrium position")
+                                    else:
+                                        recommendations.append("❌ **Poor thermodynamics** - Reaction may require extreme conditions or process coupling")
+                                        recommendations.append("🔄 **Process redesign** - Consider alternative pathways or reaction coupling")
+                                    
+                                    # Specific step recommendations
+                                    unfavorable_steps = [i for i, K in enumerate(K_eq_list) if K < 0.01]
+                                    if unfavorable_steps:
+                                        step_names = [f"r{i+1}" for i in unfavorable_steps]
+                                        recommendations.append(f"🔧 **Optimize specific steps:** {', '.join(step_names)} have very low K_eq values")
+                                        recommendations.append("💡 **Consider:** Alternative catalysts, modified conditions, or step elimination")
+                                    
+                                    # Temperature optimization suggestions
+                                    if any(K > 1000 for K in K_eq_list) and any(K < 0.001 for K in K_eq_list):
+                                        recommendations.append("🌡️ **Temperature optimization** may help balance competing thermodynamic requirements")
+                                        recommendations.append("📊 **Consider:** Van 't Hoff analysis to determine optimal temperature")
+                                    
+                                    # Process integration recommendations
+                                    if 0.1 < K_overall < 10:
+                                        recommendations.append("🔗 **Process integration** - Consider coupling with thermodynamically favorable reactions")
+                                        recommendations.append("♻️ **Separation strategy** - Product removal might shift equilibrium favorably")
+                                    
+                                    # Display recommendations
+                                    for i, rec in enumerate(recommendations, 1):
+                                        st.write(f"{i}. {rec}")
+                                    
+                                    # Download section
+                                    st.subheader("💾 Download Results")
+                                    
+                                    # Create comprehensive results for download
+                                    download_data = []
+                                    for i in range(len(K_eq_list)):
+                                        if 'stoich' in loaded_files and i < len(loaded_files['stoich']):
+                                            reaction_name = loaded_files['stoich'].iloc[i, 0]
+                                        else:
+                                            reaction_name = f"r{i+1}"
+                                        
+                                        download_data.append({
+                                            'Reaction_ID': f"r{i+1}",
+                                            'Reaction_Name': reaction_name,
+                                            'k_forward': k_forward[i],
+                                            'k_reverse': k_reverse[i],
+                                            'K_equilibrium': K_eq_list[i],
+                                            'Sigma': st.session_state.sigma_values[i],
+                                            'K_eq_to_sigma': K_eq_list[i]**st.session_state.sigma_values[i],
+                                            'ln_K_eq': math.log(K_eq_list[i]) if K_eq_list[i] > 0 else 'Undefined',
+                                            'Delta_G_individual_kJ_mol': -R * T * math.log(K_eq_list[i]) / 1000 if K_eq_list[i] > 0 else 'Undefined',
+                                            'Thermodynamic_Favorability': 'Forward' if K_eq_list[i] > 1 else 'Reverse' if K_eq_list[i] < 1 else 'Balanced'
+                                        })
+                                    
+                                    # Add overall summary
+                                    overall_summary = {
+                                        'Reaction_ID': 'OVERALL',
+                                        'Reaction_Name': 'Combined Process',
+                                        'k_forward': '',
+                                        'k_reverse': '',
+                                        'K_equilibrium': K_overall,
+                                        'Sigma': '',
+                                        'K_eq_to_sigma': '',
+                                        'ln_K_eq': math.log(K_overall) if K_overall > 0 else 'Undefined',
+                                        'Delta_G_individual_kJ_mol': -R * T * math.log(K_overall) / 1000 if K_overall > 0 else 'Undefined',
+                                        'Thermodynamic_Favorability': 'Forward' if K_overall > 1 else 'Reverse' if K_overall < 1 else 'Balanced'
+                                    }
+                                    download_data.append(overall_summary)
+                                    
+                                    # Add system parameters
+                                    system_params = {
+                                        'Reaction_ID': 'SYSTEM_PARAMS',
+                                        'Reaction_Name': f'T={T}K, R={R}J/(mol·K)',
+                                        'k_forward': f'Sum_sigma={sum(st.session_state.sigma_values):.3f}',
+                                        'k_reverse': f'Num_reactions={len(K_eq_list)}',
+                                        'K_equilibrium': '',
+                                        'Sigma': '',
+                                        'K_eq_to_sigma': '',
+                                        'ln_K_eq': '',
+                                        'Delta_G_individual_kJ_mol': '',
+                                        'Thermodynamic_Favorability': ''
+                                    }
+                                    download_data.append(system_params)
+                                    
+                                    results_df = pd.DataFrame(download_data)
+                                    csv = results_df.to_csv(index=False)
+                                    
+                                    st.download_button(
+                                        label="📄 Download Equilibrium Analysis CSV",
+                                        data=csv,
+                                        file_name="uploaded_files_equilibrium_analysis.csv",
+                                        mime="text/csv",
+                                        help="Download comprehensive equilibrium analysis results with thermodynamic properties"
+                                    )
+                                    
+                                except Exception as e:
+                                    st.error(f"❌ Error in equilibrium analysis: {str(e)}")
+                                    with st.expander("🔧 Error Details"):
+                                        st.write(str(e))
+                                        st.write("**Troubleshooting:**")
+                                        st.write("• Verify all rate constants are positive numbers")
+                                        st.write("• Check that forward and reverse rate constants are properly paired")
+                                        st.write("• Ensure temperature is reasonable (200-2000 K)")
+                                        st.write("• Validate stoichiometric numbers are appropriate")
                     
                     else:
                         st.warning("Stoichiometric matrix is required to determine the number of reactions.")
