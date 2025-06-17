@@ -29,6 +29,7 @@ RNMG - Reaction Network Matrix Generator
 - Streamlit
 - pandas
 - NumPy
+- Plotly
 
 ---
 
