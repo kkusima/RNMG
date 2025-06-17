@@ -146,9 +146,8 @@ def get_atomic_composition():
 
 def parse_species_formula(formula):
     """
-    This is our comprehensive chemical formula parser! It can handle complex
+    This is a comprehensive chemical formula parser. It can handle complex
     formulas like Ca(OH)2, Al2(SO4)3, and even surface species like CO*.
-    Much more powerful than the old hardcoded approach.
     """
     composition = {}
     
@@ -174,7 +173,7 @@ def parse_species_formula(formula):
             # Find the innermost parentheses (handles nested cases)
             match = re.search(r'\(([^()]+)\)(\d*)', formula_str)
             if not match:
-                break  # Something went wrong, bail out
+                break  
             
             group_content = match.group(1)    # What's inside the parentheses
             multiplier = int(match.group(2)) if match.group(2) else 1  # Number after parentheses
@@ -199,7 +198,7 @@ def parse_species_formula(formula):
     pattern = r'([A-Z][a-z]?)(\d*)'  # Matches things like "Ca", "O2", "Al", etc.
     matches = re.findall(pattern, expanded_formula)
     
-    # Build up our composition dictionary
+    # Build up the composition dictionary
     for element, count in matches:
         count = int(count) if count else 1  # If no number, assume 1
         composition[element] = composition.get(element, 0) + count
@@ -218,7 +217,7 @@ def parse_species_formula(formula):
 def get_species_atomic_composition(species):
     """
     Main function that gets the atomic composition for any species.
-    First tries the fallback dictionary, then uses our smart parser.
+    First tries the fallback dictionary, then uses a parser.
     """
     # Remove phase notation like (g), (l), (s) - we don't need it for composition
     clean_species = re.sub(r'\([gls]\)', '', species)
@@ -228,7 +227,7 @@ def get_species_atomic_composition(species):
     if clean_species in compositions:
         return compositions[clean_species]
     
-    # Use our comprehensive parser for everything else
+    # Use the comprehensive parser for everything else
     return parse_species_formula(clean_species)
 
 # =============================================================================
@@ -237,7 +236,7 @@ def get_species_atomic_composition(species):
 
 def create_default_parameters():
     """
-    Creates a default set of parameters for the reactions we've added.
+    Creates a default set of parameters
     This includes temperature, gas constant, pressures, rate constants,
     and some placeholder constants. Users can edit these later.
     """
@@ -268,7 +267,7 @@ def create_default_parameters():
 
 def update_matrices():
     """
-    This is a big function that rebuilds both the atomic and stoichiometric
+    This rebuilds both the atomic and stoichiometric
     matrices whenever we add or remove reactions. It makes sure everything
     stays consistent and properly ordered.
     """
@@ -354,7 +353,7 @@ def update_matrices():
         
         stoich_data.append(row)
     
-    # Create the stoichiometric matrix DataFrame
+    # Creates the stoichiometric matrix DataFrame
     st.session_state.stoich_matrix = pd.DataFrame(stoich_data, columns=stoich_columns)
     
     # Check that both matrices have consistent species ordering
@@ -423,7 +422,7 @@ def check_mass_balance(atomic_matrix=None, stoich_matrix=None):
         # Calculate A * v for this reaction
         mass_balance_result = np.dot(atomic_matrix_vals, reaction_row)
         
-        # If any element is not close to zero, we have an imbalance
+        # If any element is not close to zero, there is an imbalance
         if not np.allclose(mass_balance_result, 0, atol=1e-10):
             mass_balanced = False
             reaction_name = stoich_matrix.iloc[i, 0]
@@ -457,7 +456,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
         Tuple of (K_eq_list, K_overall, temperature, gas_constant, k_forward, k_reverse)
     """
     try:
-        # Extract temperature and gas constant from parameters with better error handling
+        # Extract temperature and gas constant from parameters
         T_row = params_df[params_df['Parameter'].str.lower() == 't']
         R_row = params_df[params_df['Parameter'].str.lower() == 'r']
         
@@ -534,7 +533,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                         except (ValueError, TypeError):
                             continue
                 
-                # Use defaults if we couldn't find them
+                # Use defaults if couldn't find them
                 if not kf_found:
                     st.warning(f"Forward rate constant for reaction {i+1} not found, using default 1.0")
                     k_forward.append(1.0)
@@ -543,7 +542,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                     st.warning(f"Reverse rate constant for reaction {i+1} not found, using default 1.0")
                     k_reverse.append(1.0)
         
-        # Make sure we have the right number of rate constants
+        # Make sure have the right number of rate constants
         while len(k_forward) < len(sigma_values):
             k_forward.append(1.0)
         while len(k_reverse) < len(sigma_values):
@@ -725,7 +724,7 @@ if st.session_state.app_mode == 'Generator':
         st.header("Reaction Input")
         
         # Reminder about proper formatting
-        st.markdown("**Use ⇌ arrow (copy above) • One reaction at a time**")
+        st.markdown("**Use ⇌ arrow only and input one reaction at a time**")
         
         reaction_input = st.text_area(
             "Enter ONE reaction:",
@@ -773,7 +772,7 @@ if st.session_state.app_mode == 'Generator':
             st.session_state.mass_balance_result = {'balanced': None, 'message': ''}
             st.rerun()
 
-    # Main content area - only shows if we have reactions
+    # Main content area - only shows if there are reactions
     if st.session_state.reactions:
         # Create tabs for different views
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Reaction Mechanism", "📊 Stoichiometric Matrix", "⚛️ Atomic Matrix", "⚙️ Parameters", "🌡️ Thermodynamics Analysis"])
@@ -1250,7 +1249,7 @@ if st.session_state.app_mode == 'Generator':
                             col1, col2 = st.columns(2)
                             
                             with col1:
-                                st.markdown("**🚧 Potential Thermodynamic Bottlenecks:**")
+                                st.markdown("**🚧 Potential Thermodynamic Bottlenecks (lowest K):**")
                                 if min_K < 0.1:
                                     st.write(f"• **{min_K_reaction}**: K = {min_K:.2e} (thermodynamically unfavorable)")
                                     st.write(f"  Original: {st.session_state.reactions[min_K_idx][3]}")
@@ -1266,7 +1265,7 @@ if st.session_state.app_mode == 'Generator':
                                         st.write(f"• r{idx+1}: K = {K_eq_list_gen[idx]:.2e}")
                             
                             with col2:
-                                st.markdown("**⚡ Thermodynamic Driving Forces:**")
+                                st.markdown("**⚡ Thermodynamic Driving Forces (highest K):**")
                                 if max_K > 10:
                                     st.write(f"• **{max_K_reaction}**: K = {max_K:.2e} (strongly favored)")
                                     st.write(f"  Original: {st.session_state.reactions[max_K_idx][3]}")
@@ -1282,46 +1281,7 @@ if st.session_state.app_mode == 'Generator':
                                         if idx != max_K_idx:
                                             st.write(f"• r{idx+1}: K = {K_eq_list_gen[idx]:.2e}")
                             
-                            # Practical recommendations
-                            st.subheader("💡 Practical Recommendations")
-                            
-                            recommendations = []
-                            
-                            # Overall thermodynamics recommendations
-                            if K_overall_gen > 1000:
-                                recommendations.append("✅ **Excellent thermodynamics** - Reaction should proceed well under standard conditions")
-                                recommendations.append("🎯 **Focus on kinetics** - Thermodynamics are favorable, optimize rate constants and mass transfer")
-                            elif K_overall_gen > 1:
-                                recommendations.append("✅ **Good thermodynamics** - Reaction is thermodynamically favorable")
-                                recommendations.append("⚖️ **Balanced optimization** - Consider both thermodynamic and kinetic improvements")
-                            elif K_overall_gen > 0.001:
-                                recommendations.append("⚠️ **Marginal thermodynamics** - Consider temperature, pressure, or concentration optimization")
-                                recommendations.append("🌡️ **Temperature sensitivity** - Higher temperatures might improve equilibrium position")
-                            else:
-                                recommendations.append("❌ **Poor thermodynamics** - Reaction may require extreme conditions or process coupling")
-                                recommendations.append("🔄 **Process redesign** - Consider alternative pathways or reaction coupling")
-                            
-                            # Specific step recommendations
-                            unfavorable_steps = [i for i, K in enumerate(K_eq_list_gen) if K < 0.01]
-                            if unfavorable_steps:
-                                step_names = [f"r{i+1}" for i in unfavorable_steps]
-                                recommendations.append(f"🔧 **Optimize specific steps:** {', '.join(step_names)} have very low K_eq values")
-                                recommendations.append("💡 **Consider:** Alternative catalysts, modified conditions, or step elimination")
-                            
-                            # Temperature optimization suggestions
-                            if any(K > 1000 for K in K_eq_list_gen) and any(K < 0.001 for K in K_eq_list_gen):
-                                recommendations.append("🌡️ **Temperature optimization** may help balance competing thermodynamic requirements")
-                                recommendations.append("📊 **Consider:** Van 't Hoff analysis to determine optimal temperature")
-                            
-                            # Process integration recommendations
-                            if 0.1 < K_overall_gen < 10:
-                                recommendations.append("🔗 **Process integration** - Consider coupling with thermodynamically favorable reactions")
-                                recommendations.append("♻️ **Separation strategy** - Product removal might shift equilibrium favorably")
-                            
-                            # Display recommendations
-                            for i, rec in enumerate(recommendations, 1):
-                                st.write(f"{i}. {rec}")
-                            
+                                                        
                             # Download section
                             st.subheader("💾 Download Results")
                             
@@ -1405,7 +1365,7 @@ if st.session_state.app_mode == 'Generator':
         # Matrix consistency check
         if 'matrix_consistency' in st.session_state:
             if st.session_state.matrix_consistency['consistent']:
-                st.success("✅ Matrix Consistency Check: Both atomic and stoichiometric matrices have consistent species ordering (Gas → Surface)")
+                st.success("✅ Matrix Consistency Check: Both atomic and stoichiometric matrices")
             else:
                 st.error("❌ Matrix Consistency Check: Species ordering mismatch detected!")
                 with st.expander("View Ordering Details"):
@@ -1445,11 +1405,6 @@ if st.session_state.app_mode == 'Generator':
             - For each reaction, the atomic matrix (A) is multiplied by the stoichiometric coefficients (v)
             - If A × v = 0 for all reactions, mass is conserved
             - Any non-zero result indicates a mass imbalance
-            
-            **Example:**
-            For reaction: CO + O* → CO2 + *
-            - Carbon: 1×1 + 0×1 = 1 (reactants) vs 1×1 + 0×1 = 1 (products) ✓
-            - Oxygen: 1×1 + 1×1 = 2 (reactants) vs 2×1 + 0×1 = 2 (products) ✓
             """)
         
         # Summary metrics
@@ -1479,7 +1434,7 @@ if st.session_state.app_mode == 'Generator':
         All matrices maintain consistent ordering: **Gas → Surface → Empty Sites (*)** last.
         
         ### ⚠️ Important Rules:
-        - **Use ONLY ⇌ arrows** (copy from the box above)
+        - **Use ONLY ⇌ arrows** 
         - **Enter ONE reaction at a time**, then click "Add Reaction"
         - **Use `*` for surface sites**
         - **Use `(g)` for gas phase** (optional)
@@ -1494,7 +1449,7 @@ if st.session_state.app_mode == 'Generator':
         
         ### 💡 Features:
         - **Automatic Ordering**: Gas species columns appear first, then surface species
-        - **Empty Sites Last**: `*` (empty sites) always appear in the last column/row
+        - **Empty Sites Last**: `*` (empty sites) always appear in the last column/row (a necessray convention)
         - **Consistency Check**: Both matrices maintain identical species ordering
         - **Mass Balance**: Verify atom conservation across all reactions
         - **Thermodynamics**: Calculate K_overall = ∏K_i^σ_i with comprehensive analysis
@@ -1564,7 +1519,7 @@ else:
         
         ### 🔍 Available Analysis Types:
         - **Mass Balance**: Verify atom conservation across reactions
-        - **Thermodynamics**: Comprehensive equilibrium constant analysis with K_overall = ∏K_i^σ_i
+        - **Thermodynamics**: Equilibrium constant analysis with K_overall = ∏K_i^σ_i
         """)
     else:
         # Load the uploaded files
@@ -1620,12 +1575,11 @@ else:
                 # Explanation of what this analysis does
                 st.markdown("""
                 <div style="background-color: #f0f2f6; padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; border-left: 4px solid #1f77b4;">
-                    <h4>🔬 Comprehensive Equilibrium Constant Analysis</h4>
+                    <h4>🔬 Equilibrium Constant Analysis</h4>
                     <p>This analysis calculates thermodynamic equilibrium constants from your kinetic parameters:</p>
                     <ul>
                         <li><strong>Individual K_eq:</strong> For each reaction: K_i = k_forward/k_reverse</li>
                         <li><strong>Overall K_eq:</strong> Combined equilibrium: K_overall = ∏K_i^σ_i</li>
-                        <li><strong>Thermodynamic insight:</strong> Understand which direction is thermodynamically favored</li>
                         <li><strong>Visual analysis:</strong> Interactive plots and comprehensive interpretation</li>
                     </ul>
                 </div>
@@ -1964,7 +1918,7 @@ else:
                                     col1, col2 = st.columns(2)
                                     
                                     with col1:
-                                        st.markdown("**🚧 Potential Thermodynamic Bottlenecks:**")
+                                        st.markdown("**🚧 Potential Thermodynamic Bottlenecks (lowest K):**")
                                         if min_K < 0.1:
                                             reaction_name = loaded_files['stoich'].iloc[min_K_idx, 0] if 'stoich' in loaded_files and min_K_idx < len(loaded_files['stoich']) else f"r{min_K_idx+1}"
                                             st.write(f"• **{min_K_reaction}**: K = {min_K:.2e} (thermodynamically unfavorable)")
@@ -1981,7 +1935,7 @@ else:
                                                 st.write(f"• r{idx+1}: K = {K_eq_list[idx]:.2e}")
                                     
                                     with col2:
-                                        st.markdown("**⚡ Thermodynamic Driving Forces:**")
+                                        st.markdown("**⚡ Thermodynamic Driving Forces (highest K):**")
                                         if max_K > 10:
                                             reaction_name = loaded_files['stoich'].iloc[max_K_idx, 0] if 'stoich' in loaded_files and max_K_idx < len(loaded_files['stoich']) else f"r{max_K_idx+1}"
                                             st.write(f"• **{max_K_reaction}**: K = {max_K:.2e} (strongly favored)")
@@ -1998,45 +1952,6 @@ else:
                                                 if idx != max_K_idx:
                                                     st.write(f"• r{idx+1}: K = {K_eq_list[idx]:.2e}")
                                     
-                                    # Practical recommendations
-                                    st.subheader("💡 Practical Recommendations")
-                                    
-                                    recommendations = []
-                                    
-                                    # Overall thermodynamics recommendations
-                                    if K_overall > 1000:
-                                        recommendations.append("✅ **Excellent thermodynamics** - Reaction should proceed well under standard conditions")
-                                        recommendations.append("🎯 **Focus on kinetics** - Thermodynamics are favorable, optimize rate constants and mass transfer")
-                                    elif K_overall > 1:
-                                        recommendations.append("✅ **Good thermodynamics** - Reaction is thermodynamically favorable")
-                                        recommendations.append("⚖️ **Balanced optimization** - Consider both thermodynamic and kinetic improvements")
-                                    elif K_overall > 0.001:
-                                        recommendations.append("⚠️ **Marginal thermodynamics** - Consider temperature, pressure, or concentration optimization")
-                                        recommendations.append("🌡️ **Temperature sensitivity** - Higher temperatures might improve equilibrium position")
-                                    else:
-                                        recommendations.append("❌ **Poor thermodynamics** - Reaction may require extreme conditions or process coupling")
-                                        recommendations.append("🔄 **Process redesign** - Consider alternative pathways or reaction coupling")
-                                    
-                                    # Specific step recommendations
-                                    unfavorable_steps = [i for i, K in enumerate(K_eq_list) if K < 0.01]
-                                    if unfavorable_steps:
-                                        step_names = [f"r{i+1}" for i in unfavorable_steps]
-                                        recommendations.append(f"🔧 **Optimize specific steps:** {', '.join(step_names)} have very low K_eq values")
-                                        recommendations.append("💡 **Consider:** Alternative catalysts, modified conditions, or step elimination")
-                                    
-                                    # Temperature optimization suggestions
-                                    if any(K > 1000 for K in K_eq_list) and any(K < 0.001 for K in K_eq_list):
-                                        recommendations.append("🌡️ **Temperature optimization** may help balance competing thermodynamic requirements")
-                                        recommendations.append("📊 **Consider:** Van 't Hoff analysis to determine optimal temperature")
-                                    
-                                    # Process integration recommendations
-                                    if 0.1 < K_overall < 10:
-                                        recommendations.append("🔗 **Process integration** - Consider coupling with thermodynamically favorable reactions")
-                                        recommendations.append("♻️ **Separation strategy** - Product removal might shift equilibrium favorably")
-                                    
-                                    # Display recommendations
-                                    for i, rec in enumerate(recommendations, 1):
-                                        st.write(f"{i}. {rec}")
                                     
                                     # Download section
                                     st.subheader("💾 Download Results")
