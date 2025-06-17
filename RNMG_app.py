@@ -1,3 +1,14 @@
+# Aurthor: Kenneth Kusima
+# Version 1.0
+# 06/2025
+# =============================================================================
+# REACTION NETWORK MATRIX GENERATOR
+# =============================================================================
+# This app helps create stoichiometric and atomic matrices from chemical 
+# reaction mechanisms. It's designed for surface chemistry but works for 
+# any type of reactions!
+
+# Import all the libraries we need
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,65 +17,87 @@ from io import StringIO
 from collections import defaultdict, Counter
 import math
 
-# Page configuration
+# =============================================================================
+# PAGE SETUP AND CONFIGURATION
+# =============================================================================
+
+# Set up the page layout and basic configuration
 st.set_page_config(
     page_title="Reaction Network Matrix Generator",
     page_icon="🔗",
-    layout="wide"
+    layout="wide"  # Uses full width of browser
 )
 
+# Main title and description
 st.title("Reaction Network Matrix Generator")
 st.markdown("Create stoichiometric and atomic matrices from chemical reaction mechanisms")
 
-# Initialize session state
+# =============================================================================
+# SESSION STATE INITIALIZATION
+# =============================================================================
+# Streamlit uses session state to remember data between runs
+# We initialize all our variables here so they persist
+
 if 'reactions' not in st.session_state:
-    st.session_state.reactions = []
+    st.session_state.reactions = []  # Stores all the reactions we've added
 if 'species_list' not in st.session_state:
-    st.session_state.species_list = []
+    st.session_state.species_list = []  # List of all unique species
 if 'atomic_matrix' not in st.session_state:
-    st.session_state.atomic_matrix = pd.DataFrame()
+    st.session_state.atomic_matrix = pd.DataFrame()  # A matrix showing atomic composition
 if 'stoich_matrix' not in st.session_state:
-    st.session_state.stoich_matrix = pd.DataFrame()
+    st.session_state.stoich_matrix = pd.DataFrame()  # Matrix showing reaction stoichiometry
 if 'param_data' not in st.session_state:
-    st.session_state.param_data = []
+    st.session_state.param_data = []  # Parameters like rate constants and pressures
 if 'matrix_consistency' not in st.session_state:
     st.session_state.matrix_consistency = {'consistent': True, 'atomic_species': [], 'stoich_species': []}
 if 'mass_balance_result' not in st.session_state:
     st.session_state.mass_balance_result = {'balanced': None, 'message': ''}
 if 'app_mode' not in st.session_state:
-    st.session_state.app_mode = 'Generator'
+    st.session_state.app_mode = 'Generator'  # Can be 'Generator' or 'Analysis'
 if 'uploaded_files' not in st.session_state:
     st.session_state.uploaded_files = {'atomic': None, 'stoich': None, 'params': None}
 if 'analysis_mode' not in st.session_state:
-    st.session_state.analysis_mode = 'Mass Balance'
+    st.session_state.analysis_mode = 'Mass Balance'  # Type of analysis in analysis mode
 if 'sigma_values' not in st.session_state:
-    st.session_state.sigma_values = []
+    st.session_state.sigma_values = []  # Stoichiometric numbers for thermodynamics
 if 'equilibrium_constants' not in st.session_state:
-    st.session_state.equilibrium_constants = []
+    st.session_state.equilibrium_constants = []  # Calculated equilibrium constants
+
+# =============================================================================
+# HELPER FUNCTIONS FOR PARSING REACTIONS AND SPECIES
+# =============================================================================
 
 def parse_species(species_str):
-    """Parse a species string to extract species name and stoichiometric coefficient"""
-    species_str = species_str.strip()
+    """
+    Takes a species string like "2O*" or "CO(g)" and figures out 
+    what the actual species is and how many of them we have.
+    Returns the species name and its coefficient.
+    """
+    species_str = species_str.strip()  # Remove any extra spaces
     
-    # Handle coefficients like 2O*, 2*
+    # Look for numbers at the beginning (like "2" in "2O*")
     coeff_match = re.match(r'^(\d+)(.+)$', species_str)
     if coeff_match:
-        coeff = int(coeff_match.group(1))
-        species = coeff_match.group(2)
+        coeff = int(coeff_match.group(1))  # The number part
+        species = coeff_match.group(2)     # The species part
     else:
-        coeff = 1
+        coeff = 1          # If no number, coefficient is 1
         species = species_str
     
     return species, coeff
 
 def parse_reaction(reaction_str):
-    """Parse a reaction string and extract reactants and products"""
-    # Check if the required ⇌ arrow is present
+    """
+    Takes a reaction string like "CO(g) + * ⇌ CO*" and breaks it down
+    into reactants and products with their coefficients.
+    This is the heart of the reaction parsing system!
+    """
+    # We only accept the equilibrium arrow ⇌ to keep things consistent
     if '⇌' not in reaction_str:
         st.error(f"❌ Please use only ⇌ arrows. Copy the arrow from the box above. Your input: {reaction_str}")
         return None, None, None
     
-    # Split into reactants and products
+    # Split the reaction at the arrow
     parts = reaction_str.split('⇌')
     if len(parts) != 2:
         st.error(f"Invalid reaction format: {reaction_str}")
@@ -72,15 +105,16 @@ def parse_reaction(reaction_str):
     
     reactants_str, products_str = parts
     
-    # Parse reactants
+    # Parse the reactants side
     reactants = {}
     for reactant in reactants_str.split('+'):
         reactant = reactant.strip()
-        if reactant:
+        if reactant:  # Skip empty strings
             species, coeff = parse_species(reactant)
+            # If we see the same species twice, add up the coefficients
             reactants[species] = reactants.get(species, 0) + coeff
     
-    # Parse products
+    # Parse the products side (same logic as reactants)
     products = {}
     for product in products_str.split('+'):
         product = product.strip()
@@ -90,212 +124,251 @@ def parse_reaction(reaction_str):
     
     return reactants, products, reaction_str
 
+# =============================================================================
+# CHEMICAL FORMULA PARSING FUNCTIONS
+# =============================================================================
+# These functions figure out the atomic composition of any chemical species
+
 def get_atomic_composition():
-    """Define atomic composition for common species (fallback only)"""
-    # Only keep very basic cases as fallback
+    """
+    Provides a fallback dictionary for really basic species.
+    Most species will be parsed automatically now, but we keep
+    this for the simplest cases like the surface site "*".
+    """
     compositions = {
-        '*': {'*': 1},  # Empty surface site
+        '*': {'*': 1},  # Empty surface site - can't parse this automatically!
     }
     return compositions
 
 def parse_species_formula(formula):
-    """Enhanced parser for chemical formulas - handles complex formulas automatically"""
+    """
+    This is our enhanced chemical formula parser! It can handle complex
+    formulas like Ca(OH)2, Al2(SO4)3, and even surface species like CO*.
+    Much more powerful than the old hardcoded approach.
+    """
     composition = {}
     
-    # Handle surface sites first
+    # Handle the special case of empty surface sites
     if formula == '*':
         return {'*': 1}
     
-    # Handle adsorbed species (ending with *)
+    # Check if this is an adsorbed species (ends with *)
     surface_site = False
     if formula.endswith('*'):
         surface_site = True
-        formula = formula[:-1]  # Remove the * for parsing
+        formula = formula[:-1]  # Remove the * for now, we'll add it back later
     
-    # Handle parentheses in formulas like Ca(OH)2, Al2(SO4)3
     def expand_parentheses(formula_str):
-        """Expand parentheses in chemical formulas"""
+        """
+        Handles parentheses in chemical formulas like Ca(OH)2.
+        This expands Ca(OH)2 into CaO2H2 so we can parse it easily.
+        """
         import re
         
-        # Find parentheses with multipliers
+        # Keep expanding until no more parentheses
         while '(' in formula_str:
-            # Find the innermost parentheses
+            # Find the innermost parentheses (handles nested cases)
             match = re.search(r'\(([^()]+)\)(\d*)', formula_str)
             if not match:
-                break
+                break  # Something went wrong, bail out
             
-            group_content = match.group(1)
-            multiplier = int(match.group(2)) if match.group(2) else 1
+            group_content = match.group(1)    # What's inside the parentheses
+            multiplier = int(match.group(2)) if match.group(2) else 1  # Number after parentheses
             
-            # Expand the group
+            # Expand everything inside the parentheses
             expanded = ''
             group_elements = re.findall(r'([A-Z][a-z]?)(\d*)', group_content)
             for element, count in group_elements:
                 count = int(count) if count else 1
                 expanded += element + str(count * multiplier)
             
-            # Replace the parentheses group with expanded version
+            # Replace the parentheses group with the expanded version
             formula_str = formula_str[:match.start()] + expanded + formula_str[match.end():]
         
         return formula_str
     
-    # Expand any parentheses
+    # First, expand any parentheses we find
     expanded_formula = expand_parentheses(formula)
     
-    # Parse element-number pairs
+    # Now parse all the element-number pairs
     import re
-    pattern = r'([A-Z][a-z]?)(\d*)'
+    pattern = r'([A-Z][a-z]?)(\d*)'  # Matches things like "Ca", "O2", "Al", etc.
     matches = re.findall(pattern, expanded_formula)
     
+    # Build up our composition dictionary
     for element, count in matches:
-        count = int(count) if count else 1
+        count = int(count) if count else 1  # If no number, assume 1
         composition[element] = composition.get(element, 0) + count
     
-    # Add surface site if this was an adsorbed species
+    # Add the surface site back if this was an adsorbed species
     if surface_site:
         composition['*'] = 1
     
-    # If no elements found, try some special cases
+    # If we couldn't parse anything, mark it as unknown
     if not composition and formula:
-        # Handle some edge cases or unknown species
         composition = {'Unknown': 1}
         print(f"Warning: Could not parse formula '{formula}'. Treating as unknown species.")
     
     return composition
 
 def get_species_atomic_composition(species):
-    """Get atomic composition for a species with enhanced parsing"""
-    # Remove gas phase notation (g), (l), (s) if present
+    """
+    Main function that gets the atomic composition for any species.
+    First tries the fallback dictionary, then uses our smart parser.
+    """
+    # Remove phase notation like (g), (l), (s) - we don't need it for composition
     clean_species = re.sub(r'\([gls]\)', '', species)
     
-    # Check if it's in the basic fallback dictionary first
+    # Check the basic fallback dictionary first
     compositions = get_atomic_composition()
     if clean_species in compositions:
         return compositions[clean_species]
     
-    # Use the enhanced parser for everything else
+    # Use our enhanced parser for everything else
     return parse_species_formula(clean_species)
 
+# =============================================================================
+# PARAMETER AND MATRIX GENERATION FUNCTIONS
+# =============================================================================
+
 def create_default_parameters():
-    """Create default parameter entries for the current reaction set"""
+    """
+    Creates a default set of parameters for the reactions we've added.
+    This includes temperature, gas constant, pressures, rate constants,
+    and some placeholder constants. Users can edit these later.
+    """
     params = []
     
-    # Global parameters
+    # Global thermodynamic parameters
     params.append({'Reaction_Descrp': '', 'Parameter': 'T', 'Values': 320.0, 'Units': 'K'})
     params.append({'Reaction_Descrp': '', 'Parameter': 'R', 'Values': 8.31446, 'Units': 'JK^-1mol^-1'})
     
-    # Pressure parameters for gas species (in consistent order)
+    # Create pressure parameters for all gas phase species
     gas_species = [s for s in st.session_state.species_list if not s.endswith('*')]
     for i, species in enumerate(gas_species):
         params.append({'Reaction_Descrp': species, 'Parameter': f'P{i+1}', 'Values': 1.0e-8, 'Units': 'bar'})
     
-    # Rate constants for reactions
+    # Create forward and reverse rate constants for each reaction
     for i in range(len(st.session_state.reactions)):
         reaction_id = f'r{i+1}'
         params.append({'Reaction_Descrp': reaction_id, 'Parameter': f'k{i+1}f', 'Values': 1.0, 'Units': '-'})
         params.append({'Reaction_Descrp': '', 'Parameter': f'k{i+1}r', 'Values': 1.0, 'Units': '-'})
     
-    # Constants
+    # Add some placeholder constants (users might need these for kinetic modeling)
     for i in range(len(st.session_state.reactions)):
-        for direction in ['f', 'r']:
-            for const_type in ['a', 'b', 'c']:
+        for direction in ['f', 'r']:  # Forward and reverse
+            for const_type in ['a', 'b', 'c']:  # Different types of constants
                 params.append({'Reaction_Descrp': 'const', 'Parameter': f'{const_type}{i+1}{direction}', 'Values': 1.0, 'Units': '-'})
     
     return params
 
 def update_matrices():
-    """Update atomic and stoichiometric matrices based on current reactions"""
+    """
+    This is a big function that rebuilds both the atomic and stoichiometric
+    matrices whenever we add or remove reactions. It makes sure everything
+    stays consistent and properly ordered.
+    """
+    # If no reactions, just clear everything
     if not st.session_state.reactions:
         st.session_state.atomic_matrix = pd.DataFrame()
         st.session_state.stoich_matrix = pd.DataFrame()
         st.session_state.species_list = []
         return
     
-    # Collect all species
+    # Collect all unique species from all reactions
     all_species = set()
     for _, reactants, products, _ in st.session_state.reactions:
         all_species.update(reactants.keys())
         all_species.update(products.keys())
     
-    # Separate and sort gas and surface species, with empty sites (*) last
+    # Organize species: gas phase first, then surface species, with * at the very end
     gas_species = sorted([s for s in all_species if not s.endswith('*')])
     surface_species = [s for s in all_species if s.endswith('*')]
     
-    # Sort surface species with empty sites (*) at the end
+    # Sort surface species but keep empty sites (*) at the end
     other_surface = sorted([s for s in surface_species if s != '*'])
     empty_sites = [s for s in surface_species if s == '*']
     surface_species = other_surface + empty_sites
     
-    # Create consistent species order: gas species first, then surface species, with * last
+    # Create our final ordered species list
     ordered_species = gas_species + surface_species
     st.session_state.species_list = ordered_species
     
-    # Create atomic matrix with consistent ordering
-    all_atoms = set()
+    # ======================
+    # BUILD THE ATOMIC MATRIX
+    # ======================
     
-    # Collect all atom types using the new function
+    # Find all the different atoms we need to track
+    all_atoms = set()
     for species in ordered_species:
         composition = get_species_atomic_composition(species)
         all_atoms.update(composition.keys())
     
-    # Sort atoms with "*" (surface sites) at the end
+    # Sort atoms with surface sites (*) at the end
     other_atoms = sorted([atom for atom in all_atoms if atom != '*'])
     surface_atom = [atom for atom in all_atoms if atom == '*']
     all_atoms = other_atoms + surface_atom
     
-    # Build atomic matrix with consistent species ordering
+    # Build the atomic matrix data
     atomic_data = []
     for atom in all_atoms:
-        row = [atom]
-        for species in ordered_species:  # Use ordered_species to ensure consistent ordering
+        row = [atom]  # First column is the atom name
+        for species in ordered_species:
             composition = get_species_atomic_composition(species)
-            row.append(composition.get(atom, 0))
+            row.append(composition.get(atom, 0))  # How many of this atom in this species
         atomic_data.append(row)
     
-    columns = ['A\\S'] + ordered_species
+    # Create the atomic matrix DataFrame
+    columns = ['A\\S'] + ordered_species  # A\S means "Atoms \ Species"
     st.session_state.atomic_matrix = pd.DataFrame(atomic_data, columns=columns)
     
-    # Create stoichiometric matrix with same species ordering
+    # ============================
+    # BUILD THE STOICHIOMETRIC MATRIX
+    # ============================
+    
     stoich_data = []
     
-    # Get gas and surface species in the same order as atomic matrix
+    # Create column headers with proper notation
     gas_species = [s for s in ordered_species if not s.endswith('*')]
     surface_species = [s for s in ordered_species if s.endswith('*')]
-    
-    # Column headers: P_ for gas phase, theta_ for surface species (with * last)
-    # Use the same ordering as atomic matrix
     stoich_columns = ['r\\S'] + [f'P_{s}' for s in gas_species] + [f'theta_{s}' for s in surface_species]
     
+    # Build each row (one for each reaction)
     for i, (_, reactants, products, _) in enumerate(st.session_state.reactions):
-        row = [f'r{i+1}']
+        row = [f'r{i+1}']  # First column is reaction name
         
-        # Gas phase species (in same order as atomic matrix)
+        # Gas phase species columns
         for species in gas_species:
+            # Net stoichiometric coefficient = products - reactants
             net_coeff = products.get(species, 0) - reactants.get(species, 0)
             row.append(net_coeff)
         
-        # Surface species (in same order as atomic matrix)
+        # Surface species columns
         for species in surface_species:
             net_coeff = products.get(species, 0) - reactants.get(species, 0)
             row.append(net_coeff)
         
         stoich_data.append(row)
     
+    # Create the stoichiometric matrix DataFrame
     st.session_state.stoich_matrix = pd.DataFrame(stoich_data, columns=stoich_columns)
     
-    # Verification check: ensure both matrices have consistent species ordering
+    # Check that both matrices have consistent species ordering
     verify_matrix_consistency()
 
 def verify_matrix_consistency():
-    """Verify that atomic and stoichiometric matrices have consistent species ordering"""
+    """
+    Double-checks that our atomic and stoichiometric matrices have
+    the same species in the same order. This is crucial for mass balance
+    calculations to work properly.
+    """
     if st.session_state.atomic_matrix.empty or st.session_state.stoich_matrix.empty:
         return True
     
-    # Get species from atomic matrix (excluding first column A\S)
+    # Get species from atomic matrix (skip first column which is atom names)
     atomic_species = st.session_state.atomic_matrix.columns[1:].tolist()
     
-    # Get species from stoichiometric matrix (excluding first column r\S)
-    # Remove prefixes P_ and theta_ to get actual species names
+    # Get species from stoichiometric matrix and clean up the prefixes
     stoich_species = []
     for col in st.session_state.stoich_matrix.columns[1:]:
         if col.startswith('P_'):
@@ -303,10 +376,10 @@ def verify_matrix_consistency():
         elif col.startswith('theta_'):
             stoich_species.append(col[6:])  # Remove 'theta_' prefix
     
-    # Check if species lists match
+    # Check if the lists match
     consistency_check = atomic_species == stoich_species
     
-    # Store consistency status in session state for display
+    # Store the result for display purposes
     st.session_state.matrix_consistency = {
         'consistent': consistency_check,
         'atomic_species': atomic_species,
@@ -315,8 +388,17 @@ def verify_matrix_consistency():
     
     return consistency_check
 
+# =============================================================================
+# ANALYSIS AND CALCULATION FUNCTIONS
+# =============================================================================
+
 def check_mass_balance(atomic_matrix=None, stoich_matrix=None):
-    """Check if mass is conserved across all reactions using A*v=0"""
+    """
+    Performs mass balance checking using the fundamental equation A*v=0,
+    where A is the atomic matrix and v is the stoichiometric vector.
+    This checks if atoms are conserved across all reactions.
+    """
+    # Use provided matrices or default to session state
     if atomic_matrix is None:
         atomic_matrix = st.session_state.atomic_matrix
     if stoich_matrix is None:
@@ -325,21 +407,19 @@ def check_mass_balance(atomic_matrix=None, stoich_matrix=None):
     if atomic_matrix.empty or stoich_matrix.empty:
         return False, "Matrices not available for mass balance check"
     
-    # Extract atomic matrix (excluding first column A\S)
+    # Extract the numerical parts (skip label columns)
     atomic_matrix_vals = atomic_matrix.iloc[:, 1:].values
-    
-    # Extract stoichiometric matrix (excluding first column r\S)  
     stoich_matrix_vals = stoich_matrix.iloc[:, 1:].values
     
     errors = []
     mass_balanced = True
     
-    # Check mass balance for each reaction
+    # Check each reaction individually
     for i, reaction_row in enumerate(stoich_matrix_vals):
-        # Compute A * v for reaction i
+        # Calculate A * v for this reaction
         mass_balance_result = np.dot(atomic_matrix_vals, reaction_row)
         
-        # Check if all elements are approximately zero (mass balanced)
+        # If any element is not close to zero, we have an imbalance
         if not np.allclose(mass_balance_result, 0, atol=1e-10):
             mass_balanced = False
             reaction_name = stoich_matrix.iloc[i, 0]
@@ -349,6 +429,7 @@ def check_mass_balance(atomic_matrix=None, stoich_matrix=None):
                 'imbalance': mass_balance_result.tolist()
             })
     
+    # Prepare the result message
     if mass_balanced:
         return True, "✅ Mass is conserved across all reactions."
     else:
@@ -359,12 +440,17 @@ def check_mass_balance(atomic_matrix=None, stoich_matrix=None):
         return False, error_message
 
 def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
-    """Calculate individual and overall equilibrium constants"""
+    """
+    Calculates individual and overall equilibrium constants from rate constants.
+    The overall equilibrium constant is calculated as K_overall = ∏K_i^σ_i
+    where K_i = k_forward/k_reverse for each reaction.
+    """
     try:
-        # Extract temperature and R
+        # Extract temperature and gas constant from parameters
         T_row = params_df[params_df['Parameter'] == 'T']
         R_row = params_df[params_df['Parameter'] == 'R']
         
+        # Use defaults if not found
         if T_row.empty:
             st.warning("Temperature (T) not found, using default 320 K")
             T = 320.0
@@ -377,16 +463,16 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
         else:
             R = R_row['Values'].iloc[0]
         
-        # Find all rate constants - be flexible with naming
+        # Find all rate constants - we need to be flexible with naming conventions
         k_forward = []
         k_reverse = []
         
-        # Get all parameters that start with 'k' and contain numbers
+        # Get all parameters that look like rate constants
         k_params = params_df[params_df['Parameter'].str.contains(r'^k\d+', regex=True, na=False)]
         k_params = k_params.sort_values('Parameter')
         
         if k_pattern == "alternating":
-            # Every other k is reverse (k1=forward, k2=reverse, k3=forward, k4=reverse...)
+            # User told us every other k is reverse (k1=forward, k2=reverse, etc.)
             k_values = k_params['Values'].tolist()
             for i in range(0, len(k_values), 2):
                 if i < len(k_values):
@@ -397,16 +483,16 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                     k_reverse.append(1.0)  # Default if missing
                     
         else:
-            # Try to detect pattern automatically
-            # Look for f/r suffixes first
+            # Try to automatically detect the naming pattern
             for i in range(len(sigma_values)):
-                # Try different naming conventions
+                # Try different possible naming conventions
                 possible_forward = [f'k{i+1}f', f'k{i+1}F', f'k_{i+1}_f', f'k{i+1}', f'k{2*i+1}']
                 possible_reverse = [f'k{i+1}r', f'k{i+1}R', f'k_{i+1}_r', f'k{i+1}_rev', f'k{2*i+2}']
                 
                 kf_found = False
                 kr_found = False
                 
+                # Look for forward rate constant
                 for kf_name in possible_forward:
                     kf_row = params_df[params_df['Parameter'] == kf_name]
                     if not kf_row.empty:
@@ -414,6 +500,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                         kf_found = True
                         break
                 
+                # Look for reverse rate constant
                 for kr_name in possible_reverse:
                     kr_row = params_df[params_df['Parameter'] == kr_name]
                     if not kr_row.empty:
@@ -421,6 +508,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                         kr_found = True
                         break
                 
+                # Use defaults if we couldn't find them
                 if not kf_found:
                     st.warning(f"Forward rate constant for reaction {i+1} not found, using 1.0")
                     k_forward.append(1.0)
@@ -429,7 +517,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
                     st.warning(f"Reverse rate constant for reaction {i+1} not found, using 1.0")
                     k_reverse.append(1.0)
         
-        # Ensure we have the right number of rate constants
+        # Make sure we have the right number of rate constants
         while len(k_forward) < len(sigma_values):
             k_forward.append(1.0)
         while len(k_reverse) < len(sigma_values):
@@ -448,7 +536,7 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
         # Calculate overall equilibrium constant: K_overall = ∏(K_i^σ_i)
         K_overall = 1.0
         for i, (K_i, sigma_i) in enumerate(zip(K_eq, sigma_values)):
-            if K_i > 0:  # Ensure positive value for logarithm
+            if K_i > 0:  # Make sure we can take the logarithm if needed
                 K_overall *= K_i ** sigma_i
             else:
                 st.warning(f"Non-positive equilibrium constant for reaction {i+1}")
@@ -460,10 +548,18 @@ def calculate_equilibrium_constants(params_df, sigma_values, k_pattern="auto"):
         st.error(f"Error calculating equilibrium constants: {e}")
         return [], 1.0, 300.0, 8.314, [], []
 
+# =============================================================================
+# FILE HANDLING FUNCTIONS
+# =============================================================================
+
 def load_uploaded_files():
-    """Load and process uploaded files"""
+    """
+    Loads and validates CSV files uploaded by the user in Analysis mode.
+    Returns a dictionary with the loaded DataFrames or None if there were errors.
+    """
     files_loaded = {}
     
+    # Try to load atomic matrix
     if st.session_state.uploaded_files['atomic'] is not None:
         try:
             atomic_df = pd.read_csv(st.session_state.uploaded_files['atomic'])
@@ -472,6 +568,7 @@ def load_uploaded_files():
             st.error(f"Error loading atomic matrix: {e}")
             return None
     
+    # Try to load stoichiometric matrix
     if st.session_state.uploaded_files['stoich'] is not None:
         try:
             stoich_df = pd.read_csv(st.session_state.uploaded_files['stoich'])
@@ -480,6 +577,7 @@ def load_uploaded_files():
             st.error(f"Error loading stoichiometric matrix: {e}")
             return None
     
+    # Try to load parameters
     if st.session_state.uploaded_files['params'] is not None:
         try:
             params_df = pd.read_csv(st.session_state.uploaded_files['params'])
@@ -490,7 +588,11 @@ def load_uploaded_files():
     
     return files_loaded
 
-# Mode selector in sidebar
+# =============================================================================
+# MAIN APPLICATION INTERFACE
+# =============================================================================
+
+# Mode selector in the sidebar - lets user choose between Generator and Analysis
 with st.sidebar:
     st.header("Application Mode")
     mode = st.radio(
@@ -500,13 +602,16 @@ with st.sidebar:
     )
     st.session_state.app_mode = mode
 
-# Generator Mode (Original functionality)
+# =============================================================================
+# GENERATOR MODE - BUILD MECHANISMS FROM SCRATCH
+# =============================================================================
+
 if st.session_state.app_mode == 'Generator':
-    # Original sidebar content for reaction input
+    # Sidebar controls for adding reactions
     with st.sidebar:
         st.header("Reaction Input")
         
-        # Reminder about arrow and single reaction
+        # Reminder about proper formatting
         st.markdown("**Use ⇌ arrow (copy above) • One reaction at a time**")
         
         reaction_input = st.text_area(
@@ -516,17 +621,21 @@ if st.session_state.app_mode == 'Generator':
             height=80
         )
         
+        # Button to add the reaction
         if st.button("Add Reaction", type="primary"):
             if reaction_input.strip():
                 reactants, products, original = parse_reaction(reaction_input.strip())
                 if reactants is not None and products is not None:
+                    # Add the reaction to our list
                     st.session_state.reactions.append((len(st.session_state.reactions), reactants, products, original))
+                    # Rebuild matrices and parameters
                     update_matrices()
                     st.session_state.param_data = create_default_parameters()
-                    st.session_state.mass_balance_result = {'balanced': None, 'message': ''}  # Reset mass balance
+                    st.session_state.mass_balance_result = {'balanced': None, 'message': ''}
                     st.success("Reaction added!")
                     st.rerun()
         
+        # Show current reactions with delete buttons
         if st.session_state.reactions:
             st.subheader("Current Reactions")
             for i, (idx, reactants, products, original) in enumerate(st.session_state.reactions):
@@ -538,9 +647,10 @@ if st.session_state.app_mode == 'Generator':
                         st.session_state.reactions.pop(i)
                         update_matrices()
                         st.session_state.param_data = create_default_parameters()
-                        st.session_state.mass_balance_result = {'balanced': None, 'message': ''}  # Reset mass balance
+                        st.session_state.mass_balance_result = {'balanced': None, 'message': ''}
                         st.rerun()
         
+        # Clear all button
         if st.button("Clear All", type="secondary"):
             st.session_state.reactions = []
             st.session_state.species_list = []
@@ -550,19 +660,22 @@ if st.session_state.app_mode == 'Generator':
             st.session_state.mass_balance_result = {'balanced': None, 'message': ''}
             st.rerun()
 
-    # Main content area for Generator mode
+    # Main content area - only shows if we have reactions
     if st.session_state.reactions:
-        # Tabs for different matrices
+        # Create tabs for different views
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 Reaction Mechanism", "📊 Stoichiometric Matrix", "⚛️ Atomic Matrix", "⚙️ Parameters", "🌡️ Thermodynamics"])
         
+        # =============================
+        # TAB 1: REACTION MECHANISM VIEW
+        # =============================
         with tab1:
             st.subheader("Reaction Mechanism")
             
-            # Display current mechanism in a clean format
+            # Display each reaction step nicely
             st.markdown("**Current Reaction Steps:**")
             
             for i, (_, reactants, products, original) in enumerate(st.session_state.reactions):
-                # Create a nice display for each reaction
+                # Create a clean layout for each reaction
                 col1, col2 = st.columns([1, 8])
                 
                 with col1:
@@ -571,11 +684,14 @@ if st.session_state.app_mode == 'Generator':
                 with col2:
                     st.code(f"r{i+1}: {original}", language=None)
             
-            # Summary information
+            # Show summary info if we have multiple reactions
             if len(st.session_state.reactions) > 1:
                 st.markdown("---")
                 st.markdown(f"**Total Steps:** {len(st.session_state.reactions)}")
         
+        # ===================================
+        # TAB 2: STOICHIOMETRIC MATRIX
+        # ===================================
         with tab2:
             st.subheader("Stoichiometric Matrix")
             if not st.session_state.stoich_matrix.empty:
@@ -594,6 +710,9 @@ if st.session_state.app_mode == 'Generator':
                         mime="text/csv"
                     )
         
+        # ==========================
+        # TAB 3: ATOMIC MATRIX
+        # ==========================
         with tab3:
             st.subheader("Atomic Matrix")
             if not st.session_state.atomic_matrix.empty:
@@ -612,18 +731,21 @@ if st.session_state.app_mode == 'Generator':
                         mime="text/csv"
                     )
         
+        # =======================
+        # TAB 4: PARAMETERS
+        # =======================
         with tab4:
             st.subheader("Parameter Table")
             
             if st.session_state.param_data:
-                # Create editable dataframe
+                # Create an editable table of parameters
                 param_df = pd.DataFrame(st.session_state.param_data)
                 
-                # Display editable table
+                # Display the editable table
                 edited_df = st.data_editor(
                     param_df,
                     use_container_width=True,
-                    num_rows="dynamic",
+                    num_rows="dynamic",  # Allows adding/removing rows
                     column_config={
                         "Reaction_Descrp": st.column_config.TextColumn("Reaction Description"),
                         "Parameter": st.column_config.TextColumn("Parameter"),
@@ -632,7 +754,7 @@ if st.session_state.app_mode == 'Generator':
                     }
                 )
                 
-                # Update session state with edits
+                # Update our session state with any edits
                 st.session_state.param_data = edited_df.to_dict('records')
                 
                 # Download section
@@ -648,25 +770,28 @@ if st.session_state.app_mode == 'Generator':
                         mime="text/csv"
                     )
         
+        # ==============================
+        # TAB 5: THERMODYNAMICS ANALYSIS
+        # ==============================
         with tab5:
             st.subheader("Thermodynamics Analysis")
             
             if st.session_state.param_data:
-                # Convert param_data to DataFrame for processing
+                # Convert our parameter data to a DataFrame for processing
                 params_df = pd.DataFrame(st.session_state.param_data)
                 
-                # Parameter inspection section
+                # Parameter inspection section - helps users understand their data
                 with st.expander("🔍 Inspect Generated Parameters"):
                     st.write("**Current Parameters:**")
                     st.dataframe(params_df, use_container_width=True)
                     
-                    # Highlight rate constants
+                    # Highlight rate constants specifically
                     k_params = params_df[params_df['Parameter'].str.contains(r'^k\d+', regex=True, na=False)]
                     if not k_params.empty:
                         st.write("**Rate Constants Found:**")
                         st.dataframe(k_params, use_container_width=True)
                 
-                # Rate constant pattern selector
+                # Let user choose how their rate constants are organized
                 st.markdown("**Rate Constant Pattern:**")
                 k_pattern_gen = st.radio(
                     "How are your rate constants organized?",
@@ -679,7 +804,7 @@ if st.session_state.app_mode == 'Generator':
                     key="gen_k_pattern"
                 )
                 
-                # Edit parameters inline
+                # Allow inline parameter editing
                 st.markdown("**Edit Parameters:**")
                 edited_params_gen = st.data_editor(
                     params_df,
@@ -694,10 +819,10 @@ if st.session_state.app_mode == 'Generator':
                     key="gen_params_editor"
                 )
                 
-                # Update session state with edits
+                # Update session state with any parameter edits
                 st.session_state.param_data = edited_params_gen.to_dict('records')
                 
-                # Number of reactions
+                # Get the number of reactions for sigma input
                 num_reactions = len(st.session_state.reactions)
                 
                 st.markdown("---")
@@ -734,7 +859,7 @@ if st.session_state.app_mode == 'Generator':
                     for i, (_, reactants, products, original) in enumerate(st.session_state.reactions):
                         st.write(f"**r{i+1}:** {original}")
                 
-                # Calculate equilibrium constants
+                # Main calculation button
                 if st.button("🧮 Calculate Overall Equilibrium", type="primary", key="gen_calc_eq"):
                     K_eq_list_gen, K_overall_gen, T_gen, R_gen, k_forward_gen, k_reverse_gen = calculate_equilibrium_constants(
                         edited_params_gen, st.session_state.sigma_values_gen, k_pattern_gen
@@ -743,11 +868,11 @@ if st.session_state.app_mode == 'Generator':
                     st.markdown("---")
                     st.subheader("🎯 Results")
                     
-                    # Display rate constants used
+                    # Show which rate constants were actually used
                     st.markdown("**Rate Constants Used:**")
                     rate_data_gen = []
                     for i, (kf, kr) in enumerate(zip(k_forward_gen, k_reverse_gen)):
-                        # Get original reaction for reference
+                        # Get the original reaction for reference
                         original_reaction = st.session_state.reactions[i][3] if i < len(st.session_state.reactions) else f"r{i+1}"
                         rate_data_gen.append({
                             'Reaction': f'r{i+1}',
@@ -760,7 +885,7 @@ if st.session_state.app_mode == 'Generator':
                     rate_df_gen = pd.DataFrame(rate_data_gen)
                     st.dataframe(rate_df_gen, use_container_width=True)
                     
-                    # Display equilibrium calculation
+                    # Show the equilibrium calculation breakdown
                     st.markdown("**Equilibrium Calculation:**")
                     eq_data_gen = []
                     for i, (K_i, sigma_i) in enumerate(zip(K_eq_list_gen, st.session_state.sigma_values_gen)):
@@ -774,11 +899,11 @@ if st.session_state.app_mode == 'Generator':
                     eq_df_gen = pd.DataFrame(eq_data_gen)
                     st.dataframe(eq_df_gen, use_container_width=True)
                     
-                    # Display overall equilibrium constant
+                    # Display the overall equilibrium constant
                     st.markdown("**Overall Equilibrium Constant:**")
                     st.latex(r"K_{overall,eq} = \prod_{i} K_{i,eq}^{\sigma_i}")
                     
-                    # Format scientific notation for display
+                    # Format the result nicely in scientific notation
                     if K_overall_gen != 0:
                         exponent = math.floor(math.log10(abs(K_overall_gen)))
                         mantissa = K_overall_gen / (10 ** exponent)
@@ -786,7 +911,7 @@ if st.session_state.app_mode == 'Generator':
                     else:
                         st.markdown("**K_overall = 0**")
                     
-                    # Additional thermodynamic info
+                    # Additional thermodynamic information
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Temperature", f"{T_gen:.1f} K")
@@ -800,8 +925,13 @@ if st.session_state.app_mode == 'Generator':
             else:
                 st.info("Add reactions first to generate parameters for thermodynamics analysis.")
     
-        # Matrix consistency check
+        # =============================
+        # CONSISTENCY AND MASS BALANCE CHECKS
+        # =============================
+        
         st.markdown("---")
+        
+        # Matrix consistency check
         if 'matrix_consistency' in st.session_state:
             if st.session_state.matrix_consistency['consistent']:
                 st.success("✅ Matrix Consistency Check: Both atomic and stoichiometric matrices have consistent species ordering (Gas → Surface)")
@@ -818,7 +948,7 @@ if st.session_state.app_mode == 'Generator':
                         for i, species in enumerate(st.session_state.matrix_consistency['stoich_species']):
                             st.write(f"{i+1}. {species}")
         
-        # Mass Balance Check Section
+        # Mass balance verification section
         st.markdown("### 🧮 Mass Balance Verification")
         col1, col2 = st.columns([1, 3])
         
@@ -851,7 +981,7 @@ if st.session_state.app_mode == 'Generator':
             - Oxygen: 1×1 + 1×1 = 2 (reactants) vs 2×1 + 0×1 = 2 (products) ✓
             """)
         
-        # Summary section
+        # Summary metrics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Reactions", len(st.session_state.reactions))
@@ -884,7 +1014,7 @@ if st.session_state.app_mode == 'Generator':
                         st.write(f"{i+1}. {species}")
 
     else:
-        # Welcome message and example
+        # Welcome screen when no reactions have been added yet
         st.markdown("""
         ## 🚀 Getting Started
         
@@ -924,12 +1054,16 @@ if st.session_state.app_mode == 'Generator':
         - Calculate individual and overall equilibrium constants
         """)
 
-# Analysis Mode (New functionality)
+# =============================================================================
+# ANALYSIS MODE - ANALYZE UPLOADED FILES
+# =============================================================================
+
 else:
+    # Sidebar for file uploads
     with st.sidebar:
         st.header("File Upload")
         
-        # File uploaders
+        # File upload widgets
         atomic_file = st.file_uploader(
             "Upload Atomic Matrix CSV",
             type=['csv'],
@@ -956,7 +1090,7 @@ else:
         
         st.markdown("---")
         
-        # Analysis mode selector
+        # Analysis type selector
         st.header("Analysis Type")
         analysis_mode = st.radio(
             "Select Analysis:",
@@ -968,10 +1102,11 @@ else:
     # Main content for Analysis mode
     st.markdown("## 🔬 Analysis Mode")
     
-    # Check if files are uploaded
+    # Check if any files have been uploaded
     files_uploaded = any(st.session_state.uploaded_files[key] is not None for key in st.session_state.uploaded_files)
     
     if not files_uploaded:
+        # Show instructions if no files uploaded
         st.info("Please upload your files in the sidebar to begin analysis.")
         st.markdown("""
         ### 📁 Required Files:
@@ -984,11 +1119,11 @@ else:
         - **Thermodynamics**: Calculate overall equilibrium constant using K_overall = ∏K_i^σ_i
         """)
     else:
-        # Load files
+        # Load the uploaded files
         loaded_files = load_uploaded_files()
         
         if loaded_files:
-            # Display loaded files info
+            # Show success and file info
             st.success("✅ Files loaded successfully!")
             
             col1, col2, col3 = st.columns(3)
@@ -1007,7 +1142,7 @@ else:
                 st.markdown("### 🧮 Mass Balance Analysis")
                 
                 if 'atomic' in loaded_files and 'stoich' in loaded_files:
-                    # Display matrices
+                    # Display both matrices side by side
                     col1, col2 = st.columns(2)
                     
                     with col1:
@@ -1018,7 +1153,7 @@ else:
                         st.subheader("Stoichiometric Matrix")
                         st.dataframe(loaded_files['stoich'], use_container_width=True)
                     
-                    # Mass balance check
+                    # Mass balance check button
                     if st.button("🔍 Check Mass Balance", type="primary"):
                         balanced, message = check_mass_balance(loaded_files['atomic'], loaded_files['stoich'])
                         
@@ -1035,7 +1170,7 @@ else:
                 st.markdown("### 🌡️ Thermodynamics Analysis")
                 
                 if 'params' in loaded_files:
-                    # Display and edit parameters
+                    # Display and allow editing of parameters
                     st.subheader("Parameters")
                     
                     # Parameter inspection section
@@ -1052,7 +1187,7 @@ else:
                             st.write("**Rate Constant Pattern Detection:**")
                             k_names = k_params['Parameter'].tolist()
                             
-                            # Check for different patterns
+                            # Try to detect the naming pattern
                             has_f_suffix = any('f' in k.lower() for k in k_names)
                             has_r_suffix = any('r' in k.lower() for k in k_names)
                             has_alternating = len(k_names) >= 2
@@ -1076,7 +1211,7 @@ else:
                         help="Select how your rate constants are named/organized"
                     )
                     
-                    # Make parameters editable
+                    # Editable parameters table
                     edited_params = st.data_editor(
                         loaded_files['params'],
                         use_container_width=True,
@@ -1086,7 +1221,7 @@ else:
                         }
                     )
                     
-                    # Determine number of reactions
+                    # Determine number of reactions from stoichiometric matrix
                     if 'stoich' in loaded_files:
                         num_reactions = loaded_files['stoich'].shape[0]
                         
@@ -1094,7 +1229,7 @@ else:
                         st.subheader("Stoichiometric Numbers (σ)")
                         st.markdown("Enter the stoichiometric number for each reaction step:")
                         
-                        # Initialize sigma values if not set
+                        # Initialize sigma values if needed
                         if len(st.session_state.sigma_values) != num_reactions:
                             st.session_state.sigma_values = [1.0] * num_reactions
                         
@@ -1158,7 +1293,7 @@ else:
                             st.markdown("**Overall Equilibrium Constant:**")
                             st.latex(r"K_{overall,eq} = \prod_{i} K_{i,eq}^{\sigma_i}")
                             
-                            # Format scientific notation for display
+                            # Format scientific notation nicely
                             if K_overall != 0:
                                 exponent = math.floor(math.log10(abs(K_overall)))
                                 mantissa = K_overall / (10 ** exponent)
