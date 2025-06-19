@@ -1,7 +1,7 @@
 # RNMG - Reaction Network Matrix Generator
 
 <a href="https://rnmgapp.streamlit.app" target="_blank" rel="noopener noreferrer">
-  <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Streamlit App"/>
+  <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Streamlit App" width="150"/>
 </a>
 
 A comprehensive Streamlit application for parsing chemical reaction mechanisms and automatically generating stoichiometric matrices, atomic matrices, and thermodynamic analysis for heterogeneous catalysis research. RNMG features an intuitive welcome screen interface with dedicated modes for matrix generation and file analysis.
