@@ -181,14 +181,14 @@ If you use RNMG in your research, please cite:
 
 ### **BibTeX**
 
-```
-@software{kusima2025rnmg,
+```bibtex
+@software{rnmg,
 author = {Kenneth Kusima},
 title = {RNMG - Reaction Network Matrix Generator: A Comprehensive Tool for Heterogeneous Catalysis Research},
 year = {2025},
 version = {1.1},
 url = {https://github.com/kkusima/RNMG},
-note = {Streamlit application for stoichiometric and atomic matrix generation from chemical reaction mechanisms}
+note = {WebApp for stoichiometric and atomic matrix generation from chemical reaction mechanisms}
 }
 ```
 ### **APA Format**
