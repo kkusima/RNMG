@@ -214,8 +214,8 @@ Contributions are welcome! Please feel free to:
 ## 👨‍💻 Author
 
 **Kenneth Kusima** - Chemical Engineering Researcher
-- Specialized in heterogeneous catalysis and reaction network analysis
-- Contact: [GitHub Profile](https://github.com/kkusima)
+- Specialized in heterogeneous catalysis and machine learning
+- Website: [Portfolio](https://tinyurl.com/kennethkusima)
 
 ## 📄 License
 This project is licensed under the MIT License.
