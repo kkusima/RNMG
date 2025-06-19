@@ -181,7 +181,8 @@ If you use RNMG in your research, please cite:
 
 ### **BibTeX**
 
-```@software{kusima2025rnmg,
+```
+@software{kusima2025rnmg,
 author = {Kenneth Kusima},
 title = {RNMG - Reaction Network Matrix Generator: A Comprehensive Tool for Heterogeneous Catalysis Research},
 year = {2025},
