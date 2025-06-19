@@ -1,6 +1,6 @@
 # RNMG - Reaction Network Matrix Generator
 
-<a href="https://tmkmapp.streamlit.app" target="_blank">
+<a href="https://rnmgapp.streamlit.app" target="_blank">
   <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Streamlit App" />
 </a>
 
