@@ -31,7 +31,7 @@ st.set_page_config(
 
 # Main title and description
 st.title("RNMG - Reaction Network Matrix Generator")
-st.markdown("Create stoichiometric and atomic matrices from chemical reaction mechanisms with comprehensive thermodynamic analysis")
+st.markdown("Create stoichiometric and atomic matrices from chemical reaction mechanisms with equilibrium analysis")
 
 # =============================================================================
 # SESSION STATE INITIALIZATION
