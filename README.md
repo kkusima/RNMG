@@ -4,7 +4,7 @@
   <img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" alt="Streamlit App" width="250" height="150"/>
 </a>
 
-A comprehensive Streamlit application for parsing chemical reaction mechanisms and automatically generating stoichiometric matrices, atomic matrices, and thermodynamic analysis for heterogeneous catalysis research. RNMG features an intuitive welcome screen interface with dedicated modes for matrix generation and file analysis.
+A comprehensive webapp for parsing chemical reaction mechanisms and automatically generating stoichiometric matrices, atomic matrices, and thermodynamic analysis for heterogeneous catalysis research. RNMG features an intuitive welcome screen interface with dedicated modes for matrix generation and file analysis.
 
 ## 🚀 Features
 
