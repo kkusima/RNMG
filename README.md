@@ -2,24 +2,31 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://rnmgapp.streamlit.app)
 
-A comprehensive Streamlit application for parsing chemical reaction mechanisms and automatically generating stoichiometric matrices, atomic matrices, and thermodynamic analysis for heterogeneous catalysis research.
+A comprehensive Streamlit application for parsing chemical reaction mechanisms and automatically generating stoichiometric matrices, atomic matrices, and thermodynamic analysis for heterogeneous catalysis research. RNMG features an intuitive welcome screen interface with dedicated modes for matrix generation and file analysis.
 
 ## 🚀 Features
 
-**Core Functionality:**
+### **Interactive Welcome Screen**
+- **Comprehensive Introduction** - Detailed overview of RNMG capabilities and features
+- **Mode Selection Interface** - Easy navigation between Generator and Upload modes
+- **Quick Start Buttons** - Direct access to working modes from the welcome screen
+- **Visual Feature Comparison** - Side-by-side comparison of Generator vs Upload modes
+
+### **Core Functionality**
 - **Stoichiometric Matrix Generation** - Species vs. reactions with proper coefficient handling
 - **Atomic Matrix Creation** - Atomic composition tracking for all species
 - **Parameter Management** - Editable kinetic and thermodynamic parameters
 - **Mass Balance Verification** - Automated atom conservation checking using A × ν = 0
 - **Equilibrium Analysis** - Calculate equilibrium constants and Gibbs free energy changes
 
-**Advanced Capabilities:**
-- Supports multiple surface site types (`*`, `_`, `#`, `@`, `&`)
-- Handles complex chemical formulas with parentheses (e.g., Ca(OH)₂, Al₂(SO₄)₃)
-- Auto-orders species: **Gas Phase → Surface Species → Empty Sites**
-- Comprehensive thermodynamic analysis with visual plots
-- Matrix consistency verification
-- CSV export functionality for all generated data
+### **Advanced Capabilities**
+- **Multi-Mode Interface** - Welcome screen, Generator mode, and Upload mode
+- **Smart Species Ordering** - Auto-orders species: **Gas Phase → Surface Species → Empty Sites**
+- **Multiple Surface Sites** - Supports various surface site types (`*`, `_`, `#`, `@`, `&`)
+- **Complex Formula Parsing** - Handles formulas with parentheses (e.g., Ca(OH)₂, Al₂(SO₄)₃)
+- **Comprehensive Analysis** - Thermodynamic analysis with interactive visual plots
+- **Matrix Consistency Verification** - Ensures data integrity across matrices
+- **CSV Export Functionality** - Download all generated data for external use
 
 ## 🛠️ Prerequisites
 
@@ -33,10 +40,11 @@ A comprehensive Streamlit application for parsing chemical reaction mechanisms a
 
 ## 📦 Installation
 
-1. Clone this repo:
+1. Clone this repository:
+
    ```bash
    git clone https://github.com/kkusima/RNMG.git
-   cd reaction_network_app
+   cd RNMG
    ```
 2. Create and activate a virtual environment (optional but recommended):
    ```bash
@@ -56,23 +64,41 @@ A comprehensive Streamlit application for parsing chemical reaction mechanisms a
 streamlit run RNMG_app.py
 ```
 
-This will open a browser window (or show a local URL) where you can:
 
-1. Enter reactions in the sidebar (e.g. `CO(g) + * ⇌ CO*`).
-2. View/download the **Stoichiometric Matrix**, **Atomic Matrix**, and **Parameter Table**.
-3. Run the **Mass‑Balance Check** to ensure atom conservation.
+This opens RNMG in your browser with the **Welcome Screen** where you can:
 
----
+1. **Learn about RNMG** - Comprehensive introduction to features and capabilities
+2. **Choose your mode** - Select Generator Mode or Upload Mode based on your needs
+3. **Get quick help** - Access mode-specific guidance and workflows
 
-### Upload Mode
-1. **Upload existing matrices** (CSV format)
-2. **Upload parameter files** for analysis
-3. **Perform comprehensive analysis** on uploaded data
+## 🎯 Application Modes
 
-## 📊 Analysis Types
+### **🏠 Welcome Mode**
+The default landing screen providing:
+- **Feature Overview** - Detailed comparison of Generator vs Upload modes
+- **Getting Started Guide** - Step-by-step workflows and best practices
+- **Important Guidelines** - Rules, limitations, and supported formats
+- **Quick Navigation** - Direct buttons to switch to working modes
 
-### Mass Balance Analysis
-Verifies atom conservation across all reactions using the fundamental equation:
+### **🔬 Generator Mode**
+Build reaction networks from scratch:
+1. **Enter reactions** using ⇌ arrows (e.g., `CO(g) + * ⇌ CO*`)
+2. **Auto-generate matrices** - Stoichiometric and atomic matrices
+3. **Create parameters** - Default kinetic and thermodynamic parameters
+4. **Perform analysis** - Mass balance and equilibrium analysis
+5. **Export results** - Download CSV files for external modeling
+
+### **📁 Upload Mode**
+Analyze existing data:
+1. **Upload CSV matrices** - Import atomic and stoichiometric matrices
+2. **Upload parameters** - Import kinetic parameter files
+3. **Run comprehensive analysis** - Mass balance and thermodynamic analysis
+4. **Visualize results** - Interactive plots and detailed reports
+
+## 📊 Analysis Capabilities
+
+### **Mass Balance Analysis**
+Verifies atom conservation using the fundamental equation:
 
 A × ν = 0
 Where A is the atomic matrix and ν is the stoichiometric vector.
@@ -101,34 +127,85 @@ Calculates equilibrium constants and thermodynamic properties:
 
 ## 🔬 Scientific Applications
 
-RNMG is specifically designed for **heterogeneous catalysis research** and supports:
-- Surface reaction mechanism analysis
-- Catalyst active site modeling
-- Thermodynamic feasibility studies
-- Mass balance verification for complex reaction networks
-- Kinetic parameter organization
+RNMG is specifically designed for **heterogeneous catalysis research**:
 
-## 📄 File Formats
+- **Surface Reaction Mechanisms** - CO oxidation, water-gas shift, methane reforming
+- **Catalyst Active Site Modeling** - Multiple site types and surface coverage effects
+- **Thermodynamic Studies** - Reaction feasibility and equilibrium analysis
+- **Mass Balance Verification** - Ensuring atom conservation in complex networks
+- **Kinetic Parameter Organization** - Structured data for microkinetic modeling
 
-**Export Options:**
-- Atomic Matrix: CSV format with atoms as rows, species as columns
-- Stoichiometric Matrix: CSV format with reactions as rows, species as columns
-- Parameters: CSV format with reaction descriptions, parameter names, values, and units
+## 📄 File Formats and Export
 
-## ⚠️ Limitations
+### **Export Options**
+All matrices and parameters can be exported as CSV files:
 
-- **Generator Mode**: Limited to gas-solid (heterogeneous) interfaces
-- **Surface Sites**: Currently supports 5 different site types
-- **Reaction Types**: Designed primarily for elementary surface reactions
+**1. Atomic Matrix** (`atomic_matrix.csv`)
+- Rows: Chemical elements and surface sites
+- Columns: All species in the reaction network
+- Values: Stoichiometric coefficients for atomic composition
+
+**2. Stoichiometric Matrix** (`stoichiometric_matrix.csv`)
+- Rows: Reactions (r1, r2, r3, ...)
+- Columns: Species with proper notation (P_species for gas, theta_species for surface)
+- Values: Net stoichiometric coefficients
+
+**3. Parameters** (`parameters.csv`)
+- Temperature, gas constant, pressures
+- Forward/reverse rate constants
+- Additional modeling constants
+
+### **Import Formats**
+Upload Mode accepts CSV files with the same structure as the exported files.
+
+## ⚠️ Current Limitations
+
+- **Reaction Types**: Optimized for gas-solid (heterogeneous) interfaces
+- **Surface Sites**: Supports 5 different site types (`*`, `_`, `#`, `@`, `&`)
+- **Mechanism Scope**: Designed for elementary surface reactions
+- **Phase Systems**: Currently limited to gas-surface interactions
+
+**Future Development:**
+- Liquid-phase reaction support
+- Multi-phase system capabilities
+- Complex reaction intermediate handling
 
 ## 📚 Version History
 
 - **v1.1**: Added multi-site capability, thermodynamic analysis
 - **v1.0**: Initial release with basic matrix generation and mass balance checking
 
-## 📄 License
+## 📖 Citation
 
-This project is licensed under the MIT License.
+If you use RNMG in your research, please cite:
+
+### **BibTeX**
+@software{kusima2025rnmg,
+author = {Kenneth Kusima},
+title = {RNMG - Reaction Network Matrix Generator: A Comprehensive Tool for Heterogeneous Catalysis Research},
+year = {2025},
+version = {1.1},
+url = {https://github.com/kkusima/RNMG},
+note = {Streamlit application for stoichiometric and atomic matrix generation from chemical reaction mechanisms}
+}
+
+### **APA Format**
+Kusima, K. (2025). *RNMG - Reaction Network Matrix Generator* (Version 1.1) [Computer software]. https://github.com/kkusima/RNMG
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to:
+
+- **Submit Issues** - Report bugs or request features
+- **Feature Requests** - Suggest improvements for catalysis research
+- **Pull Requests** - Contribute code improvements
+- **Documentation** - Help improve user guides and examples
+
+## 📞 Support and Contact
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/kkusima/RNMG/issues)
+- **GitHub Profile**: [https://github.com/kkusima](https://github.com/kkusima)
+- **Email**: [mailto:kennethlcs5+githubRNMG@gmail.com](kennethlcs5+githubRNMG@gmail.com)
 
 ## 👨‍💻 Author
 
@@ -136,9 +213,8 @@ This project is licensed under the MIT License.
 - Specialized in heterogeneous catalysis and reaction network analysis
 - Contact: [GitHub Profile](https://github.com/kkusima)
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests to improve RNMG's functionality for the catalysis research community.
+## 📄 License
+This project is licensed under the MIT License.
 
 ---
 
