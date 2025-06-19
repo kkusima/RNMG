@@ -180,8 +180,8 @@ Upload Mode accepts CSV files with the same structure as the exported files.
 If you use RNMG in your research, please cite:
 
 ### **BibTeX**
-'''
-@software{kusima2025rnmg,
+
+```@software{kusima2025rnmg,
 author = {Kenneth Kusima},
 title = {RNMG - Reaction Network Matrix Generator: A Comprehensive Tool for Heterogeneous Catalysis Research},
 year = {2025},
@@ -189,7 +189,7 @@ version = {1.1},
 url = {https://github.com/kkusima/RNMG},
 note = {Streamlit application for stoichiometric and atomic matrix generation from chemical reaction mechanisms}
 }
-'''
+```
 ### **APA Format**
 Kusima, K. (2025). *RNMG - Reaction Network Matrix Generator* (Version 1.1) [Computer software]. https://github.com/kkusima/RNMG
 
