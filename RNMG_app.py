@@ -1270,4 +1270,4 @@ elif selected_mode == "Upload":
 
 # Footer
 st.markdown("---")
-st.markdown("**RNMG v1.1** - Reaction Network Matrix Generator | Built with Streamlit")
+st.markdown("**RNMG v1.1** - Reaction Network Matrix Generator | Built with Streamlit by Kenneth Kusima (tinyurl.com/kennethkusima)")
