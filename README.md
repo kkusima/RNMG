@@ -66,7 +66,6 @@ A comprehensive webapp for parsing chemical reaction mechanisms and automaticall
 streamlit run RNMG_app.py
 ```
 
-
 This opens RNMG in your browser with the **Welcome Screen** where you can:
 
 1. **Learn about RNMG** - Comprehensive introduction to features and capabilities
